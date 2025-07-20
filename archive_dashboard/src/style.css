@@ -1,0 +1,272 @@
+:root {
+    --primary-color: #0078d4;
+    --primary-hover: #005a9c;
+    --secondary-color: #4CAF50;
+    --secondary-hover: #45a049;
+    --light-gray: #f4f4f4;
+    --border-color: #ddd;
+    --bg-color: #ffffff;
+    --text-color: #000000;
+    --text-muted: #555555;
+    --input-bg: #ffffff;
+    --config-bg: #fafafa;
+    --log-bg: #fafafa;
+    --hover-bg: #f0f8ff;
+}
+
+[data-theme="dark"] {
+    --primary-color: #4fc3f7;
+    --primary-hover: #29b6f6;
+    --secondary-color: #66bb6a;
+    --secondary-hover: #4caf50;
+    --light-gray: #1a1a1a;
+    --border-color: #444;
+    --bg-color: #2d2d2d;
+    --text-color: #ffffff;
+    --text-muted: #cccccc;
+    --input-bg: #3d3d3d;
+    --config-bg: #383838;
+    --log-bg: #2a2a2a;
+    --hover-bg: #404040;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: var(--light-gray);
+    color: var(--text-color);
+    margin: 0;
+    transition: background-color 0.3s ease, color 0.3s ease;
+}
+.app-container {
+    max-width: 900px;
+    margin: 2em auto;
+    background: var(--bg-color);
+    padding: 2em;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    transition: background-color 0.3s ease;
+}
+h1, h2 { color: var(--primary-color); text-align: center; }
+
+.title-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1em;
+}
+
+.github-link img {
+    width: 32px;
+    height: 32px;
+    filter: var(--text-color);
+}
+
+[data-theme="dark"] .github-link img {
+    filter: invert(1);
+}
+
+
+/* Header controls */
+.header-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2em;
+    padding: 1em;
+    border-bottom: 1px solid var(--border-color);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    border-radius: 8px;
+    background-color: var(--config-bg);
+}
+.control-group {
+    display: flex;
+    align-items: center;
+    gap: 1em;
+}
+.control-group label {
+    color: var(--text-muted);
+    font-size: 0.9em;
+    margin-right: 0.5em;
+}
+.control-group select {
+    background: var(--input-bg);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+
+/* Screen Management */
+.screen { display: none; }
+.screen.active { display: block; }
+
+/* Upload Screen */
+#upload-screen p { text-align: center; font-size: 1.1em; color: var(--text-muted); }
+#drop-zone {
+    border: 3px dashed var(--border-color);
+    border-radius: 12px;
+    padding: 40px;
+    text-align: center;
+    transition: all 0.3s;
+    cursor: pointer;
+    background: var(--input-bg);
+}
+#drop-zone.drag-over { border-color: var(--primary-color); background-color: var(--hover-bg); }
+
+/* Selection Screen */
+.selection-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2em; }
+.selection-column {
+    border: 1px solid var(--border-color);
+    padding: 1em;
+    border-radius: 8px;
+    background: var(--bg-color);
+}
+.selection-column h3 {
+    margin-top: 0;
+    border-bottom: 2px solid var(--border-color);
+    padding-bottom: 0.5em;
+    color: var(--text-color);
+}
+.search-input {
+    width: 100%;
+    padding: 8px;
+    margin-bottom: 1em;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    box-sizing: border-box;
+    background: var(--input-bg);
+    color: var(--text-color);
+}
+.item-list { max-height: 300px; overflow-y: auto; padding-right: 10px; }
+.item-list label {
+    display: block;
+    margin-bottom: 0.5em;
+    cursor: pointer;
+    padding: 5px;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+    color: var(--text-color);
+}
+.item-list label:hover { background-color: var(--hover-bg); }
+.select-all-buttons { margin-bottom: 1em; }
+.select-all-buttons button {
+    background: var(--bg-color);
+    border: 1px solid var(--primary-color);
+    color: var(--primary-color);
+    font-size: 0.9em;
+    padding: 5px 10px;
+    margin-right: 5px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+.select-all-buttons button:hover { background-color: var(--hover-bg); }
+#process-button-container { text-align: center; margin-top: 2em; }
+#process-button {
+    background-color: var(--secondary-color);
+    color: white;
+    border: none;
+    font-size: 1.2em;
+    padding: 12px 25px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+#process-button:hover { background-color: var(--secondary-hover); }
+
+/* Configuration Section */
+.config-section {
+    margin-bottom: 2em;
+    padding: 1.5em;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background-color: var(--config-bg);
+}
+.config-section h3 {
+    margin-top: 0;
+    color: var(--primary-color);
+    border-bottom: 2px solid var(--border-color);
+    padding-bottom: 0.5em;
+}
+.config-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1em; margin-bottom: 1em; }
+.config-item { display: flex; flex-direction: column; }
+.config-item label { font-weight: 500; margin-bottom: 0.3em; color: var(--text-color); }
+.config-item input, .config-item select {
+    padding: 6px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background: var(--input-bg);
+    color: var(--text-color);
+}
+.config-item small { color: var(--text-muted); font-size: 0.85em; margin-top: 0.2em; }
+.sub-config {
+    margin-left: 20px;
+    margin-top: 0.5em;
+    padding: 0.5em;
+    background-color: var(--hover-bg);
+    border-radius: 4px;
+}
+.sub-config label { font-size: 0.9em; }
+.estimation-section { margin-top: 1em; padding-top: 1em; border-top: 1px solid var(--border-color); }
+.time-display {
+    background-color: var(--hover-bg);
+    padding: 10px;
+    border-radius: 4px;
+    font-weight: bold;
+    text-align: center;
+    color: var(--text-color);
+}
+#estimated-time { color: var(--primary-color); }
+
+/* Progress Screen */
+#progress-screen { text-align: center; }
+#progress-label { font-size: 1.2em; font-weight: bold; margin-bottom: 1em; color: var(--text-color); }
+#progress-bar { width: 100%; height: 30px; }
+#status-log {
+    text-align: left;
+    white-space: pre-wrap;
+    background: var(--log-bg);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+    padding: 1em;
+    margin-top: 1em;
+    font-family: monospace;
+    font-size: 0.9em;
+    max-height: 200px;
+    overflow-y: auto;
+}
+#final-download-link {
+    background-color: var(--secondary-color);
+    color: white;
+    font-size: 1.2em;
+    padding: 15px 25px;
+    text-decoration: none;
+    display: inline-block;
+    border-radius: 5px;
+    margin-top: 1em;
+    transition: background-color 0.2s;
+}
+#final-download-link:hover { background-color: var(--secondary-hover); }
+#return-button {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 1em;
+    transition: background-color 0.2s;
+}
+#return-button:hover { background-color: var(--primary-hover); }
+
+/* Utility */
+button:disabled { background-color: #a0a0a0; cursor: not-allowed; }
+
+.footer {
+    text-align: center;
+    margin-top: 2em;
+    padding-top: 1em;
+    border-top: 1px solid var(--border-color);
+    color: var(--text-muted);
+}

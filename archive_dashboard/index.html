@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Archive Dashboard</title>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header Controls -->
+        <div class="header-controls">
+            <div class="control-group">
+                <label data-i18n="ui.language">Language</label>
+                <select id="language-select">
+                    <option value="en">English</option>
+                    <option value="ru">Русский</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label data-i18n="ui.theme">Theme</label>
+                <select id="theme-select">
+                    <option value="light" data-i18n="ui.lightTheme">Light</option>
+                    <option value="dark" data-i18n="ui.darkTheme">Dark</option>
+                </select>
+            </div>
+        </div>
+        
+        <!-- Screen 1: Upload -->
+        <div id="upload-screen" class="screen active">
+            <div class="title-container">
+                <h1 data-i18n="title">Archive Dashboard</h1>
+                <a href="https://github.com/salieri-dev/vk-helpers" target="_blank" class="github-link">
+                    <img src="/github-logo.svg" alt="GitHub" />
+                </a>
+            </div>
+            <p data-i18n="subtitle">Extract and download photos from your VK archive with EXIF metadata</p>
+            
+            <div id="drop-zone">
+                <h2 data-i18n="upload.dropText">Drop ZIP file here or click to select</h2>
+                <input type="file" id="zip-file" accept=".zip" style="display: none;">
+            </div>
+            <div id="analysis-status" style="text-align:center; margin-top:1em; font-weight:bold;"></div>
+        </div>
+
+        <!-- Screen 2: Selection -->
+        <div id="selection-screen" class="screen">
+            <h2 data-i18n="selection.title">Select Content to Download</h2>
+            
+            <!-- Download Configuration -->
+            <div class="config-section">
+                <h3 data-i18n="selection.configuration">Configuration</h3>
+                <div class="config-grid">
+                    <div class="config-item">
+                        <label>
+                            <input type="checkbox" id="exif-toggle" checked>
+                            <span data-i18n="config.exifMetadata">Add EXIF metadata from VK dates</span>
+                        </label>
+                    </div>
+                    <div class="config-item">
+                        <label for="batch-size" data-i18n="config.batchSize">Download batch size</label>
+                        <input type="number" id="batch-size" min="1" max="2000">
+                        <small data-i18n="config.batchSizeHelp">Images to download simultaneously</small>
+                    </div>
+                    <div class="config-item">
+                        <label for="sleep-time" data-i18n="config.sleepTime">Delay between batches (ms)</label>
+                        <input type="number" id="sleep-time" min="0" max="5000" value="100">
+                        <small data-i18n="config.sleepTimeHelp">Delay between batches</small>
+                    </div>
+                    <div class="config-item">
+                        <label for="sort-order" data-i18n="config.sortOrder">Sort images by</label>
+                        <select id="sort-order">
+                            <option value="name" data-i18n="config.sortOptions.name">Name</option>
+                            <option value="date" data-i18n="config.sortOptions.date">Date</option>
+                            <option value="size" data-i18n="config.sortOptions.size">Size</option>
+                        </select>
+                    </div>
+                    <div class="config-item">
+                        <label>
+                            <input type="checkbox" id="archive-batching" disabled>
+                            <span data-i18n="config.archiveBatching">Create multiple ZIP files for large downloads</span>
+                        </label>
+                        <div class="sub-config" id="batch-config" style="display: none;">
+                            <label for="archive-batch-size" data-i18n="config.archiveBatchSize">Images per ZIP file</label>
+                            <input type="number" id="archive-batch-size" min="100" max="5000" value="1000">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="selection-grid">
+                <div class="selection-column" id="albums-column">
+                    <h3><span data-i18n="selection.albums">Albums</span> (<span id="albums-count">0</span> <span data-i18n="selection.albumsCount">albums found</span>)</h3>
+                    <input type="text" id="album-search" class="search-input" data-i18n-placeholder="selection.search">
+                    <div class="select-all-buttons">
+                        <button id="select-all-albums" data-i18n="selection.selectAll">Select All</button>
+                        <button id="deselect-all-albums" data-i18n="selection.deselectAll">Deselect All</button>
+                    </div>
+                    <div id="album-list" class="item-list"></div>
+                </div>
+                <div class="selection-column" id="chats-column">
+                    <h3><span data-i18n="selection.chats">Chats</span> (<span id="chats-count">0</span> <span data-i18n="selection.chatsCount">chats found</span>)</h3>
+                    <input type="text" id="chat-search" class="search-input" data-i18n-placeholder="selection.search">
+                    <div class="select-all-buttons">
+                        <button id="select-all-chats" data-i18n="selection.selectAll">Select All</button>
+                        <button id="deselect-all-chats" data-i18n="selection.deselectAll">Deselect All</button>
+                    </div>
+                    <div id="chat-list" class="item-list"></div>
+                </div>
+            </div>
+            <div id="process-button-container">
+                <button id="process-button" data-i18n="selection.processButton">Download Selected Images</button>
+            </div>
+        </div>
+
+        <!-- Screen 3: Progress -->
+        <div id="progress-screen" class="screen">
+            <h2 data-i18n="progress.title">Downloading Images</h2>
+            <div id="progress-label" data-i18n="progress.initializing">Initializing...</div>
+            <progress id="progress-bar" value="0" max="100"></progress>
+            <div id="progress-controls" style="text-align: center; margin: 10px 0;">
+                <button id="stop-button" style="display: none; background-color: #e74c3c; color: white; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer;" data-i18n="buttons.stopDownload">Stop Download</button>
+            </div>
+            <div id="status-log"></div>
+            
+            <!-- Failed Downloads Section -->
+            <div id="failed-downloads-section" style="display: none; margin-top: 20px; padding: 15px; background-color: #ffebee; border-radius: 5px; border-left: 4px solid #f44336;">
+                <h3 style="color: #d32f2f; margin: 0 0 10px 0;" data-i18n="progress.failedDownloads">Failed Downloads</h3>
+                <div id="failed-downloads-list" style="max-height: 150px; overflow-y: auto; margin-bottom: 10px; font-family: monospace; font-size: 12px;"></div>
+            </div>
+            
+            <div id="download-link-area" style="display:none;">
+                <a id="final-download-link" href="#" download="vk_images.zip" data-i18n="buttons.downloadZip">Download Your ZIP File</a>
+                <div style="margin-top: 20px; text-align: center;">
+                    <button id="return-button" data-i18n="buttons.returnToStart">Return to Start</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <footer class="footer">
+        <p data-i18n="footer.privacy"></p>
+    </footer>
+
+    <script type="module" src="/src/main.js"></script>
+</body>
+</html>
