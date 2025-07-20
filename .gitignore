@@ -163,3 +163,4 @@ cython_debug/
 output
 Archive*
 downloaded_images
+.example
