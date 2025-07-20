@@ -162,3 +162,4 @@ cython_debug/
 #.idea/
 output
 Archive*
+downloaded_images
