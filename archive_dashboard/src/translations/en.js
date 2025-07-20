@@ -123,6 +123,57 @@ export const TRANSLATIONS_EN = {
         darkTheme: "Dark"
     },
     
+    // Navigation
+    nav: {
+        download: "Download",
+        analytics: "Analytics"
+    },
+    
+    // Analytics
+    analytics: {
+        title: "Archive Analytics",
+        description: "Discover insights from your VK archive messages and interactions.",
+        startAnalysis: "Start Analysis",
+        analyzing: "Analyzing...",
+        noArchive: "Please upload an archive first",
+        noChatsSelected: "Please select at least one chat to analyze",
+        noAnalysisSelected: "Please select at least one analysis type",
+        error: "Error during analysis",
+        runAnalysisFirst: "Please run analysis first",
+        
+        // Configuration
+        selectChats: "Select Chats to Analyze",
+        selectAnalysis: "Select Analysis Types",
+        
+        // Statistics labels
+        messagingStats: "Messaging Statistics",
+        totalMessages: "Total Messages",
+        totalChats: "Active Chats",
+        mostActiveDay: "Most Active Day",
+        mostActiveHour: "Most Active Hour",
+        
+        // Chart titles
+        activityHeatmap: "Activity Heatmap",
+        topContacts: "Top Contacts",
+        messageTimeline: "Message Timeline",
+        
+        // Social Network
+        socialNetwork: "Social Network Analysis",
+        interactionGraph: "Interaction Network",
+        responseTime: "Response Time Analysis",
+        
+        // Content Analysis
+        contentAnalysis: "Content Analysis",
+        wordCloud: "Most Used Words",
+        emojiAnalysis: "Emoji Usage",
+        sentimentAnalysis: "Sentiment Over Time",
+        
+        // Export
+        export: "Export Analytics",
+        exportJson: "Export as JSON",
+        exportCsv: "Export as CSV"
+    },
+    
     // Time units
 
     // Instructions

@@ -44,7 +44,11 @@ const TRANSLATIONS_RU = {
         archiveBatching: "Создавать несколько ZIP-файлов для больших загрузок",
         archiveBatchSize: "Изображений в ZIP-файле",
         batchSizeHelp: "Количество изображений для одновременной загрузки. Меньшие значения снижают использование памяти.",
-        sleepTimeHelp: "Задержка между пакетами загрузки для избежания ограничения скорости."
+        sleepTimeHelp: "Задержка между пакетами загрузки для избежания ограничения скорости.",
+        // START: New Translations
+        textAnalysis: "Экспортировать анализ текста чатов",
+        textAnalysisHelp: "Создает файл с частотой слов (word_frequency.json) из сообщений чатов."
+        // END: New Translations
     },
     
     // Progress screen

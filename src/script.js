@@ -638,6 +638,73 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
+    // --- [NEW] Text Analysis Helper Functions ---
+
+    /**
+     * Extracts clean message text from a message DOM element, removing headers and attachments.
+     * @param {Element} messageEl - The DOM element with class "message".
+     * @returns {string} The cleaned message text.
+     */
+    function extractMessageText(messageEl) {
+        // Work on a clone to avoid modifying the DOM during iteration
+        const clone = messageEl.cloneNode(true);
+
+        // Remove the header containing author and date
+        const header = clone.querySelector('.message__header');
+        if (header) header.remove();
+
+        // Remove the container for attachments (.kludges)
+        const kludges = clone.querySelector('.kludges');
+        if (kludges) kludges.remove();
+        
+        // Replace <br> tags with newlines for cleaner text output
+        clone.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
+        
+        // The remaining text is the clean message content
+        return clone.textContent.trim();
+    }
+
+    /**
+     * Calculates word frequency from a block of text.
+     * @param {string} text - The input text.
+     * @returns {Array<{word: string, count: number}>} An array of word-count objects, sorted by frequency.
+     */
+    function calculateWordFrequency(text) {
+        console.log(`[DEBUG] calculateWordFrequency input text length: ${text.length}`);
+        ui.log(`[DEBUG] Calculating word frequency...`);
+        const words = text
+            .toLowerCase()
+            // Split by any character that is not a letter (incl. Cyrillic) or a number
+            .split(/[^a-zа-яё0-9]+/)
+            // Filter out:
+            // - empty strings that result from multiple delimiters
+            // - short words (<= 2 chars)
+            // - words that are purely numbers (this fixes the "2021" issue)
+            .filter(word => word && word.length > 2 && isNaN(word));
+
+        console.log(`[DEBUG] Found ${words.length} words after filtering.`);
+        ui.log(`[DEBUG] Found ${words.length} words after filtering. First 10: ${words.slice(0, 10).join(', ')}`);
+
+        const frequency = words.reduce((map, word) => {
+            map[word] = (map[word] || 0) + 1;
+            return map;
+        }, {});
+
+        // Convert to the array format required for most visualization libraries (e.g., D3.js word clouds)
+        const sortedFrequency = Object.entries(frequency)
+            .map(([word, count]) => ({ word, count }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 500); // Limit to top 500 words for performance and clarity
+            
+        console.log('[DEBUG] Top 5 words:', sortedFrequency.slice(0, 5));
+        ui.log(`[DEBUG] Top 5 words: ${sortedFrequency.slice(0, 5).map(i => `${i.word} (${i.count})`).join(', ')}`);
+
+        return sortedFrequency;
+    }
+
+
+    // --- [REVISED] processSelected Function ---
+
     async function processSelected() {
         ui.showScreen('progress');
         ui.setProcessingState(true);
@@ -646,7 +713,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const decoder = new TextDecoder('windows-1251');
         let imagesToDownload = [];
+        
+        // --- [NEW] Text analysis variables ---
+        const textAnalysisEnabled = document.getElementById('text-analysis-toggle').checked;
+        let allChatText = "";
+        console.log(`[DEBUG] Text Analysis Enabled: ${textAnalysisEnabled}`);
+        ui.log(`[DEBUG] Text Analysis Enabled: ${textAnalysisEnabled}`);
 
+        // --- Album Processing (Unchanged) ---
         const selectedAlbumIndexes = [...document.querySelectorAll('.album-checkbox:checked')].map(cb => parseInt(cb.value));
         for (const index of selectedAlbumIndexes) {
             const album = foundAlbums[index];
@@ -654,22 +728,40 @@ document.addEventListener('DOMContentLoaded', () => {
             imagesToDownload.push(...parseAlbumHtml(album.name, html));
         }
 
+        // --- Chat Processing (Revised) ---
         const selectedChatIds = [...document.querySelectorAll('.chat-checkbox:checked')].map(cb => cb.value);
         for (const id of selectedChatIds) {
             const chat = foundChats.get(id);
-            imagesToDownload.push(...await parseChatHtml(chat, decoder));
+            // Pass textAnalysisEnabled flag to the parser
+            const { images, text } = await parseChatHtml(chat, decoder, textAnalysisEnabled);
+            imagesToDownload.push(...images);
+            if (textAnalysisEnabled && text) {
+                allChatText += `--- Chat: ${chat.name} ---\n\n${text}\n\n`;
+            }
+        }
+        
+        const hasImages = imagesToDownload.length > 0;
+        const hasText = textAnalysisEnabled && allChatText.trim() !== "";
+        
+        if (hasText) {
+            console.log(`[DEBUG] Total chat text collected (${allChatText.length} chars).`);
+            ui.log(`[DEBUG] Total chat text collected (${allChatText.length} chars). First 100 chars: ${allChatText.substring(0, 100)}`);
         }
         
         ui.log(`Found a total of ${imagesToDownload.length} images to download.`);
-        if (imagesToDownload.length > 0) {
-            await fetchAndZipImages(imagesToDownload);
+        if (textAnalysisEnabled) {
+            ui.log(`Text analysis enabled. Processing collected chat text.`);
+        }
+        
+        if (hasImages || hasText) {
+            await fetchAndZipImages(imagesToDownload, hasText ? allChatText : null);
         } else {
-             ui.log('No images selected or found. Nothing to do.');
+             ui.log('No images selected or text to analyze. Nothing to do.');
         }
 
         ui.setProcessingState(false);
     }
-
+    
     function parseAlbumHtml(albumName, htmlContent) {
         const doc = new DOMParser().parseFromString(htmlContent, 'text/html');
         const images = [];
@@ -709,33 +801,36 @@ document.addEventListener('DOMContentLoaded', () => {
         return images;
     }
 
-    async function parseChatHtml(chatData, decoder) {
+    // --- [REVISED] parseChatHtml Function ---
+    // This function is now refactored to parse all messages for both images and text.
+    
+    async function parseChatHtml(chatData, decoder, textAnalysisEnabled = false) {
         const images = [];
+        let chatText = "";
         const sanitizedChatName = chatData.name.replace(/[\<\>:"/\\|?*]/g, "");
-
+    
         for (const file of chatData.files) {
             const doc = new DOMParser().parseFromString(decoder.decode(await file.async('uint8array')), 'text/html');
-            doc.querySelectorAll('.item').forEach(itemEl => {
-                const attachmentLinks = itemEl.querySelectorAll('.attachment__link');
-                attachmentLinks.forEach(link => {
+            
+            // Iterate over each message to handle both text and images correctly
+            doc.querySelectorAll('.message').forEach(messageEl => {
+                // --- 1. Image Extraction from this message's attachments ---
+                messageEl.querySelectorAll('.attachment__link').forEach(link => {
                     if (/\.(jpg|jpeg|png|gif|webp)(\?|$)/i.test(link.href)) {
-                        const messageEl = link.closest('.message');
                         const messageId = messageEl?.dataset.id || 'unknown';
                         
                         // Extract date from message header
                         let dateStr = null;
-                        const headerEl = messageEl?.querySelector('.message__header');
+                        const headerEl = messageEl.querySelector('.message__header');
                         if (headerEl) {
-                            // Remove editing info spans and clean up
                             const tempDiv = document.createElement('div');
                             tempDiv.innerHTML = headerEl.innerHTML;
                             tempDiv.querySelectorAll('span').forEach(span => span.remove());
                             dateStr = tempDiv.textContent.trim();
                         }
                         
-                        // Extract filename and remove query parameters
                         const urlPart = link.href.substring(link.href.lastIndexOf('/') + 1);
-                        const cleanFilename = urlPart.split('?')[0]; // Remove query parameters
+                        const cleanFilename = urlPart.split('?')[0];
                         const finalFilename = `msg_${messageId}_${cleanFilename}`;
                         
                         images.push({
@@ -747,13 +842,36 @@ document.addEventListener('DOMContentLoaded', () => {
                         });
                     }
                 });
+    
+                // --- 2. Text Extraction from this message ---
+                if (textAnalysisEnabled) {
+                    const text = extractMessageText(messageEl);
+                    if (text) {
+                        chatText += text + "\n";
+                    }
+                }
             });
         }
-        ui.log(`- Queued ${images.length} images from chat "${chatData.name}".`);
-        return images;
+        
+        if (textAnalysisEnabled) {
+            console.log(`[DEBUG] Extracted ${chatText.length} chars from chat "${chatData.name}".`);
+            ui.log(`[DEBUG] Extracted text from "${chatData.name}". Length: ${chatText.length}.`);
+        }
+        // Log only image count to keep the log clean
+        const imageCountInChat = images.length;
+        if (imageCountInChat > 0) {
+            ui.log(`- Queued ${imageCountInChat} images from chat "${chatData.name}".`);
+        }
+
+        // Return an object containing both images and the collected text
+        return { images, text: chatText };
     }
 
-    async function fetchAndZipImages(imageList) {
+
+    // --- [REVISED] fetchAndZipImages Function ---
+    // The function now accepts chatText as an argument to pass down.
+
+    async function fetchAndZipImages(imageList, chatText = null) {
         // Get configuration values
         const batchSize = parseInt(batchSizeInput.value) || CONFIG.defaults.batchSize;
         const sleepTime = parseInt(sleepTimeInput.value) || CONFIG.defaults.sleepTime;
@@ -767,11 +885,13 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Handle archive batching
         if (archiveBatching && sortedImages.length > archiveBatchSize) {
-            return await processWithArchiveBatching(sortedImages, archiveBatchSize, batchSize, sleepTime, exifEnabled);
+            // Note: For simplicity, text analysis is added to each batch.
+            // A more complex implementation could add it only to the first batch.
+            return await processWithArchiveBatching(sortedImages, archiveBatchSize, batchSize, sleepTime, exifEnabled, chatText);
         }
         
         // Single archive processing
-        return await processSingleArchive(sortedImages, batchSize, sleepTime, exifEnabled);
+        return await processSingleArchive(sortedImages, batchSize, sleepTime, exifEnabled, null, chatText);
     }
     
     // Sort images based on selected order
@@ -797,7 +917,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     // Process multiple archives in batches
-    async function processWithArchiveBatching(imageList, archiveBatchSize, batchSize, sleepTime, exifEnabled) {
+    async function processWithArchiveBatching(imageList, archiveBatchSize, batchSize, sleepTime, exifEnabled, chatText) {
         const totalBatches = Math.ceil(imageList.length / archiveBatchSize);
         ui.log(`\nUsing archive batching: ${totalBatches} separate ZIP files will be created.`);
         
@@ -812,11 +932,13 @@ document.addEventListener('DOMContentLoaded', () => {
             
             ui.log(`\nProcessing archive batch ${batchIndex + 1}/${totalBatches} (${batchImages.length} images)...`);
             
-            const result = await processSingleArchive(batchImages, batchSize, sleepTime, exifEnabled, `batch_${batchIndex + 1}`);
+            const result = await processSingleArchive(batchImages, batchSize, sleepTime, exifEnabled, `batch_${batchIndex + 1}`, chatText);
             
             allSuccessful.push(...result.successful);
             allFailed.push(...result.failed);
-            downloadLinks.push(result.downloadLink);
+            if (result.downloadLink) {
+                downloadLinks.push(result.downloadLink);
+            }
             
             // Force garbage collection between batches
             if (batchIndex < totalBatches - 1) {
@@ -829,14 +951,16 @@ document.addEventListener('DOMContentLoaded', () => {
         createBatchSummaryPage(downloadLinks, allSuccessful, allFailed);
     }
     
-    // Process a single archive
-    async function processSingleArchive(imageList, batchSize, sleepTime, exifEnabled, batchName = null) {
+    // --- [REVISED] processSingleArchive Function ---
+    // This function now adds the text analysis files to the ZIP.
+    
+    async function processSingleArchive(imageList, batchSize, sleepTime, exifEnabled, batchName = null, chatText = null) {
         const zip = new JSZip();
         let downloadedCount = 0;
         let successfulImages = [];
         let failedImages = [];
         let processedCount = 0;
-
+        
         // Function to download a single image
         const downloadImage = async (image) => {
             try {
@@ -844,13 +968,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 let blob = await response.blob();
                 
-                // Parse VK date and add EXIF data if enabled
                 const parsedDate = parseVkDate(image.date);
                 let exifAdded = false;
                 if (exifEnabled && parsedDate && window.piexif) {
                     const originalSize = blob.size;
                     blob = await addExifData(blob, parsedDate, image.path.split('/').pop());
-                    exifAdded = blob.size !== originalSize; // A simple check to see if data was added
+                    exifAdded = blob.size !== originalSize;
                 }
                 
                 zip.file(image.path, blob);
@@ -868,7 +991,6 @@ document.addEventListener('DOMContentLoaded', () => {
         for (let i = 0; i < imageList.length; i += batchSize) {
             const batch = imageList.slice(i, i + batchSize);
             
-            // Download batch in parallel
             const promises = batch.map(downloadImage);
             await Promise.all(promises);
             
@@ -883,7 +1005,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 imageList.length
             );
             
-            // Configurable delay between batches
             if (i + batchSize < imageList.length && sleepTime > 0) {
                 await new Promise(resolve => setTimeout(resolve, sleepTime));
             }
@@ -891,11 +1012,30 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const logPrefix = batchName ? `${batchName}: ` : '';
         ui.log(`\n${logPrefix}Download complete. Successfully got ${downloadedCount} of ${imageList.length} images.`);
-        if (downloadedCount === 0) {
-            return { successful: successfulImages, failed: failedImages, downloadLink: null };
+        
+        if (downloadedCount === 0 && !chatText) {
+            ui.log('No content was processed. ZIP file will not be created.');
+            return { successful: [], failed: [], downloadLink: null };
         }
 
-        // Create metadata JSON file
+        // --- [NEW] Add text analysis files if content is available ---
+        if (chatText) {
+            console.log(`[DEBUG] Adding text analysis files to ZIP archive. Text length: ${chatText.length}`);
+            ui.log(`${logPrefix}Adding chat text analysis files...`);
+            // Add the raw, cleaned text content
+            zip.file('chats_content.txt', chatText);
+            
+            // Add the structured word frequency data
+            const wordFrequencyData = calculateWordFrequency(chatText);
+            zip.file('word_frequency.json', JSON.stringify(wordFrequencyData, null, 2));
+            if (wordFrequencyData.length > 0) {
+                ui.log(`[DEBUG] word_frequency.json created. Top word: ${wordFrequencyData[0]?.word} (${wordFrequencyData[0]?.count})`);
+            } else {
+                 ui.log(`[DEBUG] word_frequency.json created, but no words were found to analyze.`);
+            }
+        }
+
+        // Create metadata JSON file for images
         const exifCount = successfulImages.filter(img => img.exifAdded).length;
         const parsedDateCount = successfulImages.filter(img => img.parsedDate).length;
         
@@ -952,7 +1092,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const downloadUrl = URL.createObjectURL(blob);
         
         if (!batchName) {
-            // Single archive - show download link immediately
             finalDownloadLink.href = downloadUrl;
             finalDownloadLink.download = fileName;
             downloadLinkArea.style.display = 'block';

@@ -123,6 +123,57 @@ export const TRANSLATIONS_RU = {
         darkTheme: "Тёмная"
     },
     
+    // Navigation
+    nav: {
+        download: "Загрузка",
+        analytics: "Аналитика"
+    },
+    
+    // Analytics
+    analytics: {
+        title: "Аналитика архива",
+        description: "Откройте для себя инсайты из ваших сообщений и взаимодействий в архиве ВК.",
+        startAnalysis: "Начать анализ",
+        analyzing: "Анализирую...",
+        noArchive: "Пожалуйста, сначала загрузите архив",
+        noChatsSelected: "Пожалуйста, выберите хотя бы один чат для анализа",
+        noAnalysisSelected: "Пожалуйста, выберите хотя бы один тип анализа",
+        error: "Ошибка при анализе",
+        runAnalysisFirst: "Пожалуйста, сначала запустите анализ",
+        
+        // Configuration
+        selectChats: "Выберите чаты для анализа",
+        selectAnalysis: "Выберите типы анализа",
+        
+        // Statistics labels
+        messagingStats: "Статистика сообщений",
+        totalMessages: "Всего сообщений",
+        totalChats: "Активные чаты",
+        mostActiveDay: "Самый активный день",
+        mostActiveHour: "Самый активный час",
+        
+        // Chart titles
+        activityHeatmap: "Карта активности",
+        topContacts: "Топ контактов",
+        messageTimeline: "Временная шкала сообщений",
+        
+        // Social Network
+        socialNetwork: "Анализ социальных связей",
+        interactionGraph: "Граф взаимодействий",
+        responseTime: "Анализ времени ответа",
+        
+        // Content Analysis
+        contentAnalysis: "Анализ контента",
+        wordCloud: "Наиболее используемые слова",
+        emojiAnalysis: "Использование эмодзи",
+        sentimentAnalysis: "Настроение со временем",
+        
+        // Export
+        export: "Экспорт аналитики",
+        exportJson: "Экспорт в JSON",
+        exportCsv: "Экспорт в CSV"
+    },
+    
     // Time units
 
     // Instructions

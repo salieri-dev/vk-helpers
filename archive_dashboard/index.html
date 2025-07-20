@@ -41,9 +41,17 @@
             <div id="analysis-status" style="text-align:center; margin-top:1em; font-weight:bold;"></div>
         </div>
 
-        <!-- Screen 2: Selection -->
+        <!-- Screen 2: Selection/Analytics Navigation -->
         <div id="selection-screen" class="screen">
-            <h2 data-i18n="selection.title">Select Content to Download</h2>
+            <!-- Navigation Tabs -->
+            <div class="screen-navigation">
+                <button id="download-tab" class="nav-tab active" data-i18n="nav.download">Download</button>
+                <button id="analytics-tab" class="nav-tab" data-i18n="nav.analytics">Analytics</button>
+            </div>
+            
+            <!-- Download Content -->
+            <div id="download-content" class="nav-content active">
+                <h2 data-i18n="selection.title">Select Content to Download</h2>
             
             <!-- Download Configuration -->
             <div class="config-section">
@@ -106,8 +114,209 @@
                     <div id="chat-list" class="item-list"></div>
                 </div>
             </div>
-            <div id="process-button-container">
-                <button id="process-button" data-i18n="selection.processButton">Download Selected Images</button>
+                <div id="process-button-container">
+                    <button id="process-button" data-i18n="selection.processButton">Download Selected Images</button>
+                </div>
+            </div>
+            
+            <!-- Analytics Content -->
+            <div id="analytics-content" class="nav-content">
+                <h2 data-i18n="analytics.title">Archive Analytics</h2>
+                
+                <div class="analytics-container">
+                    <!-- Analytics Configuration -->
+                    <div id="analytics-configuration" class="analytics-configuration">
+                        <div class="analytics-intro">
+                            <p data-i18n="analytics.description">Discover insights from your VK archive messages and interactions.</p>
+                        </div>
+                        
+                        <div class="config-section">
+                            <h3 data-i18n="analytics.selectChats">Select Chats to Analyze</h3>
+                            <div class="selection-column">
+                                <input type="text" id="analytics-chat-search" class="search-input" data-i18n-placeholder="selection.search">
+                                <div class="select-all-buttons">
+                                    <button id="select-all-analytics-chats" data-i18n="selection.selectAll">Select All</button>
+                                    <button id="deselect-all-analytics-chats" data-i18n="selection.deselectAll">Deselect All</button>
+                                </div>
+                                <div id="analytics-chat-list" class="item-list"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="config-section">
+                            <h3 data-i18n="analytics.selectAnalysis">Select Analysis Types</h3>
+                            <div class="analysis-options-grid">
+                                <label class="analysis-option">
+                                    <input type="checkbox" id="analysis-messaging-stats" checked>
+                                    <span data-i18n="analytics.messagingStats">Messaging Statistics</span>
+                                </label>
+                                <label class="analysis-option">
+                                    <input type="checkbox" id="analysis-activity-heatmap" checked>
+                                    <span data-i18n="analytics.activityHeatmap">Activity Heatmap</span>
+                                </label>
+                                <label class="analysis-option">
+                                    <input type="checkbox" id="analysis-top-contacts" checked>
+                                    <span data-i18n="analytics.topContacts">Top Contacts</span>
+                                </label>
+                                <label class="analysis-option">
+                                    <input type="checkbox" id="analysis-message-timeline" checked>
+                                    <span data-i18n="analytics.messageTimeline">Message Timeline</span>
+                                </label>
+                                <label class="analysis-option">
+                                    <input type="checkbox" id="analysis-interaction-network" checked>
+                                    <span data-i18n="analytics.interactionGraph">Interaction Network</span>
+                                </label>
+                                <label class="analysis-option">
+                                    <input type="checkbox" id="analysis-response-times" checked>
+                                    <span data-i18n="analytics.responseTime">Response Time Analysis</span>
+                                </label>
+                                <label class="analysis-option">
+                                    <input type="checkbox" id="analysis-word-cloud" checked>
+                                    <span data-i18n="analytics.wordCloud">Most Used Words</span>
+                                </label>
+                                <label class="analysis-option">
+                                    <input type="checkbox" id="analysis-emoji-analysis" checked>
+                                    <span data-i18n="analytics.emojiAnalysis">Emoji Usage</span>
+                                </label>
+                                <label class="analysis-option">
+                                    <input type="checkbox" id="analysis-sentiment" checked>
+                                    <span data-i18n="analytics.sentimentAnalysis">Sentiment Over Time</span>
+                                </label>
+                            </div>
+                            <div class="select-all-buttons">
+                                <button id="select-all-analysis-types" data-i18n="selection.selectAll">Select All</button>
+                                <button id="deselect-all-analysis-types" data-i18n="selection.deselectAll">Deselect All</button>
+                            </div>
+                        </div>
+                        
+                        <div class="analytics-controls">
+                            <button id="start-analysis-button" class="primary-button" data-i18n="analytics.startAnalysis">Start Analysis</button>
+                        </div>
+                    </div>
+                    
+                    <!-- Analytics Progress Area -->
+                    <div class="analytics-progress-area" id="analytics-progress-area" style="display: none;">
+                        <h3 id="analytics-progress-status" class="progress-status" data-i18n="analytics.analyzing">Analyzing...</h3>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar">
+                                <div class="progress-bar-fill" id="analytics-progress-bar" style="width: 0%;"></div>
+                            </div>
+                            <div class="progress-percentage" id="analytics-progress-percentage">0%</div>
+                        </div>
+                        <div id="analytics-progress-details" class="progress-details"></div>
+                    </div>
+                    
+                    <!-- Analytics Results (hidden initially) -->
+                    <div id="analytics-results" class="analytics-results" style="display: none;">
+                        
+                        <!-- Messaging Statistics Section -->
+                        <div class="analytics-section">
+                            <h3 data-i18n="analytics.messagingStats">Messaging Statistics</h3>
+                            
+                            <div class="stats-grid">
+                                <div class="stat-card">
+                                    <div class="stat-value" id="total-messages">-</div>
+                                    <div class="stat-label" data-i18n="analytics.totalMessages">Total Messages</div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-value" id="total-chats">-</div>
+                                    <div class="stat-label" data-i18n="analytics.totalChats">Active Chats</div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-value" id="most-active-day">-</div>
+                                    <div class="stat-label" data-i18n="analytics.mostActiveDay">Most Active Day</div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-value" id="most-active-hour">-</div>
+                                    <div class="stat-label" data-i18n="analytics.mostActiveHour">Most Active Hour</div>
+                                </div>
+                            </div>
+                            
+                            <!-- Activity Heatmap -->
+                            <div class="chart-container">
+                                <h4 data-i18n="analytics.activityHeatmap">Activity Heatmap</h4>
+                                <div id="activity-heatmap" class="heatmap-container">
+                                    <div class="loading-placeholder">Loading heatmap...</div>
+                                </div>
+                            </div>
+                            
+                            <!-- Top Contacts -->
+                            <div class="chart-container">
+                                <h4 data-i18n="analytics.topContacts">Top Contacts</h4>
+                                <div id="top-contacts-chart" class="chart">
+                                    <div class="loading-placeholder">Loading top contacts...</div>
+                                </div>
+                            </div>
+                            
+                            <!-- Message Timeline -->
+                            <div class="chart-container">
+                                <h4 data-i18n="analytics.messageTimeline">Message Timeline</h4>
+                                <div id="message-timeline-chart" class="chart">
+                                    <div class="loading-placeholder">Loading timeline...</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Social Network Analysis Section -->
+                        <div class="analytics-section">
+                            <h3 data-i18n="analytics.socialNetwork">Social Network Analysis</h3>
+                            
+                            <!-- Interaction Graph -->
+                            <div class="chart-container">
+                                <h4 data-i18n="analytics.interactionGraph">Interaction Network</h4>
+                                <div id="interaction-graph" class="graph-container">
+                                    <div class="loading-placeholder">Loading interaction graph...</div>
+                                </div>
+                            </div>
+                            
+                            <!-- Response Time Analysis -->
+                            <div class="chart-container">
+                                <h4 data-i18n="analytics.responseTime">Response Time Analysis</h4>
+                                <div id="response-time-chart" class="chart">
+                                    <div class="loading-placeholder">Loading response times...</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Content Analysis Section -->
+                        <div class="analytics-section">
+                            <h3 data-i18n="analytics.contentAnalysis">Content Analysis</h3>
+                            
+                            <!-- Word Cloud -->
+                            <div class="chart-container">
+                                <h4 data-i18n="analytics.wordCloud">Most Used Words</h4>
+                                <div id="word-cloud" class="wordcloud-container">
+                                    <div class="loading-placeholder">Loading word cloud...</div>
+                                </div>
+                            </div>
+                            
+                            <!-- Emoji Analysis -->
+                            <div class="chart-container">
+                                <h4 data-i18n="analytics.emojiAnalysis">Emoji Usage</h4>
+                                <div id="emoji-analysis" class="emoji-container">
+                                    <div class="loading-placeholder">Loading emoji analysis...</div>
+                                </div>
+                            </div>
+                            
+                            <!-- Sentiment Analysis -->
+                            <div class="chart-container">
+                                <h4 data-i18n="analytics.sentimentAnalysis">Sentiment Over Time</h4>
+                                <div id="sentiment-chart" class="chart">
+                                    <div class="loading-placeholder">Loading sentiment analysis...</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Export Options -->
+                        <div class="analytics-section">
+                            <h3 data-i18n="analytics.export">Export Analytics</h3>
+                            <div class="export-controls">
+                                <button id="export-json-button" class="secondary-button" data-i18n="analytics.exportJson">Export as JSON</button>
+                                <button id="export-csv-button" class="secondary-button" data-i18n="analytics.exportCsv">Export as CSV</button>
+                            </div>
+                        </div>
+                        
+                    </div>
+                </div>
             </div>
         </div>
 

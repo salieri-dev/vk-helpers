@@ -322,6 +322,16 @@
                             <input type="number" id="archive-batch-size" min="100" max="5000" value="1000">
                         </div>
                     </div>
+                    
+                    <!-- START: New Text Analysis Option -->
+                    <div class="config-item">
+                        <label>
+                            <input type="checkbox" id="text-analysis-toggle">
+                            <span data-i18n="config.textAnalysis">Export chat text analysis</span>
+                        </label>
+                        <small data-i18n="config.textAnalysisHelp">Generates a word frequency file (word_frequency.json) from chat messages.</small>
+                    </div>
+                    <!-- END: New Text Analysis Option -->
                 </div>
                 <div class="estimation-section">
                     <div id="time-estimation" class="time-display">

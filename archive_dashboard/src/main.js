@@ -8,6 +8,8 @@ import * as dom from './ui/dom-elements.js';
 import { screenManager } from './ui/screen-manager.js';
 import { parseAlbumHtml, parseChatHtml } from './lib/archive-parser.js';
 import { CONFIG } from './config.js';
+import { VKAnalytics } from './lib/analytics.js';
+import { AnalyticsVisualizer } from './lib/analytics-visualizer.js';
 
 // Make libraries globally available if needed by old code
 window.JSZip = JSZip;
@@ -36,6 +38,11 @@ document.addEventListener('DOMContentLoaded', () => {
     let failedDownloads = []; // Track failed downloads for display only
     let maxRetryAttempts = 5; // Maximum number of automatic retry attempts
     let currentRetryAttempt = 0; // Current retry attempt counter
+    
+    // Analytics state
+    let analytics = new VKAnalytics();
+    let visualizer = new AnalyticsVisualizer();
+    let analyticsProcessed = false;
 
     // --- Event Listeners ---
     dom.languageSelect.value = currentLanguage;
@@ -106,6 +113,12 @@ document.addEventListener('DOMContentLoaded', () => {
              `).join('');
              document.getElementById('chats-count').textContent = sortedChats.length;
             
+        },
+        renderAnalyticsChatList: () => {
+            const sortedChats = [...foundChats.values()].sort((a, b) => a.name.localeCompare(b.name));
+            dom.analyticsChatList.innerHTML = sortedChats.map(chat => `
+                <label><input type="checkbox" class="analytics-chat-checkbox" value="${chat.id}" checked> ${chat.name} (${chat.files.length} parts)</label>
+            `).join('');
         }
     };
     
@@ -132,6 +145,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             
             ui.renderSelectionLists();
+            ui.renderAnalyticsChatList();
             screenManager.showScreen('selection');
             
             const totalAlbumImages = foundAlbums.reduce((sum, album) => sum + album.imageCount, 0);
@@ -255,7 +269,288 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('select-all-chats').addEventListener('click', () => toggleAllCheckboxes(dom.chatList, true));
     document.getElementById('deselect-all-chats').addEventListener('click', () => toggleAllCheckboxes(dom.chatList, false));
     
+    // Analytics chat selection
+    dom.analyticsChatSearch.addEventListener('keyup', (e) => filterList(dom.analyticsChatList, e.target.value));
+    dom.selectAllAnalyticsChats.addEventListener('click', () => toggleAllCheckboxes(dom.analyticsChatList, true));
+    dom.deselectAllAnalyticsChats.addEventListener('click', () => toggleAllCheckboxes(dom.analyticsChatList, false));
     
+    // Analytics type selection
+    dom.selectAllAnalysisTypes.addEventListener('click', () => toggleAllAnalysisTypes(true));
+    dom.deselectAllAnalysisTypes.addEventListener('click', () => toggleAllAnalysisTypes(false));
+    
+    // Analytics tab navigation
+    dom.downloadTab.addEventListener('click', () => switchTab('download'));
+    dom.analyticsTab.addEventListener('click', () => switchTab('analytics'));
+    
+    // Analytics functionality
+    dom.startAnalysisButton.addEventListener('click', startAnalysis);
+    dom.exportJsonButton.addEventListener('click', () => exportAnalytics('json'));
+    dom.exportCsvButton.addEventListener('click', () => exportAnalytics('csv'));
+
+    function switchTab(tabName) {
+        // Update tab buttons
+        document.querySelectorAll('.nav-tab').forEach(tab => tab.classList.remove('active'));
+        document.querySelectorAll('.nav-content').forEach(content => content.classList.remove('active'));
+        
+        if (tabName === 'download') {
+            dom.downloadTab.classList.add('active');
+            dom.downloadContent.classList.add('active');
+        } else if (tabName === 'analytics') {
+            dom.analyticsTab.classList.add('active');
+            dom.analyticsContent.classList.add('active');
+        }
+    }
+
+    async function startAnalysis() {
+        if (!zipFile) {
+            alert(t('analytics.noArchive') || 'Please upload an archive first');
+            return;
+        }
+
+        // Get selected chats and analysis types
+        const selectedChats = getSelectedChatsForAnalytics();
+        const selectedAnalysisTypes = getSelectedAnalysisTypes();
+        
+        if (selectedChats.size === 0) {
+            alert(t('analytics.noChatsSelected') || 'Please select at least one chat to analyze');
+            return;
+        }
+
+        // Check if at least one analysis type is selected
+        if (!Object.values(selectedAnalysisTypes).some(value => value === true)) {
+            alert(t('analytics.noAnalysisSelected') || 'Please select at least one analysis type');
+            return;
+        }
+
+        dom.startAnalysisButton.disabled = true;
+        dom.startAnalysisButton.textContent = t('analytics.analyzing') || 'Analyzing...';
+        
+        // Show progress area and hide configuration
+        dom.analyticsConfiguration.style.display = 'none';
+        dom.analyticsProgressArea.style.display = 'block';
+        dom.analyticsResults.style.display = 'none';
+        
+        try {
+            // Parse messages for analytics with progress tracking
+            const decoder = new TextDecoder('windows-1251');
+            
+            await analytics.parseMessages(zipFile, selectedChats, decoder, (status, progress, details) => {
+                updateAnalyticsProgress(status, progress, details);
+            });
+            analyticsProcessed = true;
+            
+            await renderSelectedAnalyticsWithProgress(selectedAnalysisTypes);
+            
+        } catch (error) {
+            console.error('Analytics error:', error);
+            dom.analyticsProgressArea.style.display = 'none';
+            dom.analyticsConfiguration.style.display = 'block';
+            alert(t('analytics.error') || 'Error during analysis: ' + error.message);
+        } finally {
+            dom.startAnalysisButton.disabled = false;
+            dom.startAnalysisButton.textContent = t('analytics.startAnalysis') || 'Start Analysis';
+        }
+    }
+
+    function updateAnalyticsProgress(status, progress, details) {
+        dom.analyticsProgressStatus.textContent = status;
+        dom.analyticsProgressBar.style.width = `${progress}%`;
+        dom.analyticsProgressPercentage.textContent = `${progress}%`;
+        dom.analyticsProgressDetails.textContent = details;
+    }
+
+    async function renderSelectedAnalyticsWithProgress(selectedAnalysisTypes) {
+        const allComponents = [
+            {
+                key: 'messagingStats',
+                name: 'Calculating messaging statistics...',
+                fn: () => {
+                    const stats = analytics.getMessagingStatistics();
+                    if (stats) {
+                        dom.totalMessages.textContent = stats.totalMessages.toLocaleString();
+                        dom.totalChats.textContent = stats.totalChats.toLocaleString();
+                    }
+                    return stats;
+                }
+            },
+            {
+                key: 'activityHeatmap',
+                name: 'Generating activity heatmap...',
+                fn: () => {
+                    const heatmapData = analytics.getActivityHeatmapData();
+                    if (heatmapData) {
+                        dom.mostActiveDay.textContent = heatmapData.mostActiveDay;
+                        dom.mostActiveHour.textContent = heatmapData.mostActiveHour;
+                        visualizer.renderActivityHeatmap(dom.activityHeatmap, heatmapData);
+                    }
+                    return heatmapData;
+                }
+            },
+            {
+                key: 'topContacts',
+                name: 'Analyzing top contacts...',
+                fn: () => {
+                    const topContacts = analytics.getTopContacts(10);
+                    if (topContacts) {
+                        visualizer.renderTopContactsChart(dom.topContactsChart, topContacts);
+                    }
+                    return topContacts;
+                }
+            },
+            {
+                key: 'messageTimeline',
+                name: 'Building message timeline...',
+                fn: () => {
+                    const timeline = analytics.getMessageTimeline();
+                    if (timeline) {
+                        visualizer.renderMessageTimeline(dom.messageTimelineChart, timeline);
+                    }
+                    return timeline;
+                }
+            },
+            {
+                key: 'interactionNetwork',
+                name: 'Mapping interaction network...',
+                fn: () => {
+                    const interactions = analytics.getInteractionData();
+                    if (interactions) {
+                        visualizer.renderInteractionGraph(dom.interactionGraph, interactions);
+                    }
+                    return interactions;
+                }
+            },
+            {
+                key: 'responseTimes',
+                name: 'Analyzing response times...',
+                fn: () => {
+                    const responseTimes = analytics.getResponseTimeAnalysis();
+                    if (responseTimes) {
+                        visualizer.renderResponseTimeChart(dom.responseTimeChart, responseTimes);
+                    }
+                    return responseTimes;
+                }
+            },
+            {
+                key: 'wordCloud',
+                name: 'Creating word cloud...',
+                fn: () => {
+                    const wordData = analytics.getWordFrequency();
+                    if (wordData) {
+                        visualizer.renderWordCloud(dom.wordCloud, wordData);
+                    }
+                    return wordData;
+                }
+            },
+            {
+                key: 'emojiAnalysis',
+                name: 'Processing emoji usage...',
+                fn: () => {
+                    const emojiData = analytics.getEmojiAnalysis();
+                    if (emojiData) {
+                        visualizer.renderEmojiAnalysis(dom.emojiAnalysis, emojiData);
+                    }
+                    return emojiData;
+                }
+            },
+            {
+                key: 'sentiment',
+                name: 'Computing sentiment analysis...',
+                fn: () => {
+                    const sentimentData = analytics.getSentimentAnalysis();
+                    if (sentimentData) {
+                        visualizer.renderSentimentChart(dom.sentimentChart, sentimentData);
+                    }
+                    return sentimentData;
+                }
+            }
+        ];
+    
+        // Hide progress and show results
+        dom.analyticsProgressArea.style.display = 'none';
+        dom.analyticsResults.style.display = 'block';
+    
+        // Filter components based on selected analysis types
+        const selectedComponents = allComponents.filter(component =>
+            selectedAnalysisTypes[component.key] === true
+        );
+    
+        for (let i = 0; i < selectedComponents.length; i++) {
+            const component = selectedComponents[i];
+            const progress = Math.round(((i) / selectedComponents.length) * 100);
+            
+            updateAnalyticsProgress(
+                component.name,
+                progress,
+                `Step ${i + 1} of ${selectedComponents.length} - Generating selected visualizations`
+            );
+            
+            // Add small delay to show progress
+            await new Promise(resolve => setTimeout(resolve, 200));
+            
+            try {
+                component.fn();
+            } catch (error) {
+                console.warn(`Failed to render ${component.name}:`, error);
+            }
+        }
+        
+        // Final progress update
+        updateAnalyticsProgress(
+            'Analysis complete!',
+            100,
+            `${selectedComponents.length} analytics components have been generated successfully`
+        );
+        
+        // Brief pause before hiding progress
+        await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    function exportAnalytics(format) {
+        if (!analyticsProcessed) {
+            alert(t('analytics.runAnalysisFirst') || 'Please run analysis first');
+            return;
+        }
+
+        const data = analytics.exportAnalyticsData();
+        
+        if (format === 'json') {
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `vk_analytics_${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } else if (format === 'csv') {
+            // Create CSV from top contacts and basic stats
+            let csvContent = 'Category,Name,Value\n';
+            
+            // Add basic stats
+            const stats = data.messagingStatistics;
+            if (stats) {
+                csvContent += `Total Messages,,${stats.totalMessages}\n`;
+                csvContent += `Total Chats,,${stats.totalChats}\n`;
+                csvContent += `Average Message Length,,${stats.averageMessageLength.toFixed(2)}\n`;
+                csvContent += `Average Words Per Message,,${stats.averageWordsPerMessage.toFixed(2)}\n`;
+            }
+            
+            // Add top contacts
+            if (data.topContacts) {
+                csvContent += '\nTop Contacts\n';
+                data.topContacts.forEach(contact => {
+                    csvContent += `Contact,${contact.name},${contact.messageCount}\n`;
+                });
+            }
+            
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `vk_analytics_${new Date().toISOString().split('T')[0]}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+    }
 
     function filterList(listElement, searchTerm) {
         const term = searchTerm.toLowerCase();
@@ -267,6 +562,35 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function toggleAllCheckboxes(listElement, checked) {
         listElement.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = checked);
+    }
+
+    function toggleAllAnalysisTypes(checked) {
+        document.querySelectorAll('.analysis-options-grid input[type="checkbox"]').forEach(cb => cb.checked = checked);
+    }
+
+    function getSelectedChatsForAnalytics() {
+        const selectedChatIds = [...document.querySelectorAll('.analytics-chat-checkbox:checked')].map(cb => cb.value);
+        const selectedChats = new Map();
+        selectedChatIds.forEach(id => {
+            if (foundChats.has(id)) {
+                selectedChats.set(id, foundChats.get(id));
+            }
+        });
+        return selectedChats;
+    }
+
+    function getSelectedAnalysisTypes() {
+        return {
+            messagingStats: dom.analysisMessagingStats.checked,
+            activityHeatmap: dom.analysisActivityHeatmap.checked,
+            topContacts: dom.analysisTopContacts.checked,
+            messageTimeline: dom.analysisMessageTimeline.checked,
+            interactionNetwork: dom.analysisInteractionNetwork.checked,
+            responseTimes: dom.analysisResponseTimes.checked,
+            wordCloud: dom.analysisWordCloud.checked,
+            emojiAnalysis: dom.analysisEmojiAnalysis.checked,
+            sentiment: dom.analysisSentiment.checked
+        };
     }
 
     // --- Final Processing ---
@@ -555,6 +879,15 @@ document.addEventListener('DOMContentLoaded', () => {
         shouldStop = false;
         failedDownloads = [];
         currentRetryAttempt = 0;
+        
+        // Reset analytics
+        analytics = new VKAnalytics();
+        analyticsProcessed = false;
+        dom.analyticsConfiguration.style.display = 'block';
+        dom.analyticsProgressArea.style.display = 'none';
+        dom.analyticsResults.style.display = 'none';
+        dom.analyticsChatList.innerHTML = '';
+        switchTab('download'); // Reset to download tab
         
         dom.albumList.innerHTML = '';
         dom.chatList.innerHTML = '';

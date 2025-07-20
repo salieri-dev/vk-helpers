@@ -44,7 +44,11 @@ const TRANSLATIONS_EN = {
         archiveBatching: "Create multiple ZIP files for large downloads",
         archiveBatchSize: "Images per ZIP file",
         batchSizeHelp: "Number of images to download simultaneously. Lower values reduce memory usage.",
-        sleepTimeHelp: "Delay between download batches to avoid rate limiting."
+        sleepTimeHelp: "Delay between download batches to avoid rate limiting.",
+        // START: New Translations
+        textAnalysis: "Export chat text analysis",
+        textAnalysisHelp: "Generates a word frequency file (word_frequency.json) from chat messages."
+        // END: New Translations
     },
     
     // Progress screen

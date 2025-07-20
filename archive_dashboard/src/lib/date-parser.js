@@ -32,115 +32,61 @@ export function parseVkDate(dateStr) {
     
     try {
         let day, month, year, timeStr;
+        let seconds = 0;
+
+        const cleanedDateStr = dateStr.includes(',') ? dateStr.substring(dateStr.indexOf(',') + 1).trim() : dateStr.trim();
+        const parts = cleanedDateStr.split(' ').filter(p => p && p !== 'в');
         
-        if (dateStr.includes(',') && (dateStr.startsWith('Вы,') || /^[А-Яа-яA-Za-z\s]+,/.test(dateStr))) {
-            // Handle chat format: "Name Surname, DD MMM YYYY в HH:MM:SS"
-            const commaIndex = dateStr.indexOf(',');
-            if (commaIndex === -1) throw new Error('Invalid chat date format - no comma found');
-            
-            const datePart = dateStr.substring(commaIndex + 1).trim();
-            const parts = datePart.split(' ').filter(p => p.length > 0);
-            
-            if (parts.length < 4) {
-                throw new Error('Incomplete chat date format');
-            }
-            
-            // For formats like "1 дек 2017 в 10:39:04" or "1 дек 2017 10:39:04"
-            day = parts[0];
-            const monthStr = parts[1];
-            year = parts[2];
-            
-            // Handle both "в HH:MM:SS" and direct "HH:MM:SS" formats
-            if (parts[3] === 'в' && parts.length >= 5) {
-                timeStr = parts[4];
-            } else if (parts[3].includes(':')) {
-                timeStr = parts[3];
-            } else {
-                throw new Error('Invalid time format in chat date');
-            }
-            
-            // Validate day is numeric
-            if (!/^\d{1,2}$/.test(day)) {
-                throw new Error(`Invalid day format: ${day}`);
-            }
-            
-            // Validate year is numeric
-            if (!/^\d{4}$/.test(year)) {
-                throw new Error(`Invalid year format: ${year}`);
-            }
-            
-            // Parse Russian month name
-            const monthKey = monthStr.toLowerCase();
-            if (monthKey in MONTHS_MAP) {
-                month = MONTHS_MAP[monthKey];
-            } else {
-                const shortMonth = monthStr.substring(0, 3).toLowerCase();
-                if (shortMonth in MONTHS_MAP) {
-                    month = MONTHS_MAP[shortMonth];
-                } else {
-                    throw new Error(`Unknown month: ${monthStr}`);
-                }
-            }
-            
-            // Convert time from HH:MM:SS to HH:MM
-            const timeParts = timeStr.split(':');
-            if (timeParts.length >= 2) {
-                timeStr = `${timeParts[0].padStart(2, '0')}:${timeParts[1].padStart(2, '0')}`;
-            } else {
-                timeStr = `${timeParts[0].padStart(2, '0')}:00`;
-            }
+        if (parts.length < 3) {
+            throw new Error(`Unsupported date format: not enough parts in "${cleanedDateStr}"`);
+        }
+
+        day = parts[0];
+        const monthStr = parts[1];
+        year = parts[2];
+        timeStr = parts.length >= 4 ? parts[3] : '00:00'; 
+
+        if (!/^\d{1,2}$/.test(day) || !/^\d{4}$/.test(year)) {
+            throw new Error(`Invalid day or year in "${cleanedDateStr}"`);
+        }
+
+        const monthKey = monthStr.toLowerCase();
+        if (monthKey in MONTHS_MAP) {
+            month = MONTHS_MAP[monthKey];
         } else {
-            // Album date format
-            let parts = dateStr.split(' ').filter(p => p && p !== 'в');
-            if (parts.length < 4) throw new Error('Unsupported date format');
-            
-            day = parts[0];
-            const monthStr = parts[1];
-            year = parts[2];
-            timeStr = parts[3];
-            
-            // Try numeric month first, then Russian names
-            if (/^\d+$/.test(monthStr)) {
-                month = parseInt(monthStr);
-                if (month < 1 || month > 12) throw new Error(`Invalid numeric month: ${month}`);
+            const shortMonth = monthStr.substring(0, 3).toLowerCase();
+            if (shortMonth in MONTHS_MAP) {
+                month = MONTHS_MAP[shortMonth];
             } else {
-                const monthKey = monthStr.toLowerCase();
-                if (monthKey in MONTHS_MAP) {
-                    month = MONTHS_MAP[monthKey];
-                } else {
-                    const shortMonth = monthStr.substring(0, 3).toLowerCase();
-                    if (shortMonth in MONTHS_MAP) {
-                        month = MONTHS_MAP[shortMonth];
-                    } else {
-                        throw new Error(`Unknown month: ${monthStr}`);
-                    }
-                }
-            }
-            
-            // Handle time format
-            if (timeStr.includes(':')) {
-                const timeParts = timeStr.split(':');
-                if (timeParts.length === 2) {
-                    timeStr = `${timeParts[0].padStart(2, '0')}:${timeParts[1].padStart(2, '0')}`;
-                } else {
-                    throw new Error(`Invalid time format: ${timeStr}`);
-                }
-            } else {
-                timeStr = `${timeStr.padStart(2, '0')}:00`;
+                throw new Error(`Unknown month: ${monthStr}`);
             }
         }
         
-        // Create date object
-        const dayPadded = day.padStart(2, '0');
-        const monthPadded = month.toString().padStart(2, '0');
-        const dateTimeStr = `${dayPadded} ${monthPadded} ${year} ${timeStr}`;
+        if (timeStr.includes(':')) {
+            const timeParts = timeStr.split(':');
+            if (timeParts.length >= 2) {
+                timeStr = `${timeParts[0].padStart(2, '0')}:${timeParts[1].padStart(2, '0')}`;
+                if (timeParts.length === 3) {
+                    seconds = parseInt(timeParts[2]) || 0;
+                }
+            } else {
+                throw new Error(`Invalid time format: ${timeStr}`);
+            }
+        } else {
+            timeStr = '00:00';
+        }
         
-        const parsedDate = new Date(year, month - 1, parseInt(day),
-                                  parseInt(timeStr.split(':')[0]),
-                                  parseInt(timeStr.split(':')[1]));
-                                  
+        const parsedDate = new Date(
+            parseInt(year),
+            month - 1, 
+            parseInt(day),
+            parseInt(timeStr.split(':')[0]),
+            parseInt(timeStr.split(':')[1]),
+            seconds
+        );
+                                      
         if (isNaN(parsedDate.getTime())) {
-            throw new Error(`Invalid date: ${dateTimeStr}`);
+            throw new Error(`Could not create a valid Date object from "${dateStr}"`);
         }
         
         return parsedDate;
