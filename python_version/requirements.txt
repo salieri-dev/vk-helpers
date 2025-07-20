@@ -1,4 +1,0 @@
-httpx
-tqdm
-colorama
-piexif
