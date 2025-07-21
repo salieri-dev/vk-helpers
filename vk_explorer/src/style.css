@@ -551,6 +551,62 @@ button:disabled { background-color: #a0a0a0; cursor: not-allowed; }
     font-size: 1.1em;
 }
 
+/* Chart Header and Info Panels */
+.chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5em;
+}
+
+.info-button {
+    background: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 28px;
+    height: 28px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 10px;
+    box-shadow: 0 2px 4px rgba(0,120,212,0.2);
+}
+
+.info-button:hover {
+    background: var(--primary-hover);
+    transform: scale(1.1);
+    box-shadow: 0 3px 8px rgba(0,120,212,0.3);
+}
+
+.info-panel {
+    background: var(--config-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 1em;
+    margin-bottom: 1em;
+    color: var(--text-color);
+    font-size: 0.95em;
+    line-height: 1.5;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Dark theme adjustments for info elements */
+[data-theme="dark"] .info-button {
+    box-shadow: 0 2px 4px rgba(79,195,247,0.2);
+}
+
+[data-theme="dark"] .info-button:hover {
+    box-shadow: 0 3px 8px rgba(79,195,247,0.3);
+}
+
+[data-theme="dark"] .info-panel {
+    box-shadow: 0 2px 4px rgba(255,255,255,0.1);
+}
+
 /* Statistics Grid */
 .stats-grid {
     display: grid;
@@ -724,4 +780,111 @@ button:disabled { background-color: #a0a0a0; cursor: not-allowed; }
 
 [data-theme="dark"] .nav-tab.active {
     box-shadow: 0 2px 8px rgba(79,195,247,0.3);
+}
+
+/* Interactive Word Cloud Styles */
+.word-cloud-container {
+    line-height: 1.6;
+}
+
+.word-cloud-word {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    border: 2px solid transparent;
+}
+
+.word-cloud-word:hover {
+    transform: scale(1.05) !important;
+    z-index: 10;
+    position: relative;
+}
+
+.word-cloud-word:active {
+    transform: scale(0.98) !important;
+}
+
+/* Enhance form controls in word cloud */
+.word-cloud-container input,
+.word-cloud-container select,
+.word-cloud-container button {
+    transition: all 0.2s ease;
+}
+
+.word-cloud-container input:focus,
+.word-cloud-container select:focus {
+    outline: 2px solid var(--primary-color, #007bff);
+    outline-offset: 2px;
+    border-color: var(--primary-color);
+}
+
+.word-cloud-container button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.word-cloud-container button:active {
+    transform: translateY(0);
+}
+
+/* Word info panel animation */
+.word-info {
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Word cloud controls container */
+.word-cloud-container > div:first-child {
+    background: var(--config-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 10px;
+    margin-bottom: 15px;
+}
+
+/* Make sure button colors follow theme */
+.word-cloud-container button {
+    background: var(--bg-color);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+}
+
+.word-cloud-container button:hover {
+    background: var(--hover-bg);
+}
+
+/* Responsive word cloud controls */
+@media (max-width: 768px) {
+    .word-cloud-container > div:first-child {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .word-cloud-container input,
+    .word-cloud-container select,
+    .word-cloud-container button {
+        margin: 2px 0;
+        width: 100%;
+    }
+}
+
+/* Dark theme adjustments for word cloud */
+[data-theme="dark"] .word-cloud-container input,
+[data-theme="dark"] .word-cloud-container select,
+[data-theme="dark"] .word-cloud-container button {
+    background: var(--input-bg);
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+}
+
+[data-theme="dark"] .word-cloud-container button:hover {
+    background: var(--hover-bg);
 }

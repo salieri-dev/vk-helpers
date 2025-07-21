@@ -166,12 +166,22 @@ export const TRANSLATIONS_EN = {
         contentAnalysis: "Content Analysis",
         wordCloud: "Most Used Words",
         emojiAnalysis: "Emoji Usage",
-        sentimentAnalysis: "Sentiment Over Time",
         
         // Export
         export: "Export Analytics",
         exportJson: "Export as JSON",
-        exportCsv: "Export as CSV"
+        exportCsv: "Export as CSV",
+        
+        // Info panel descriptions
+        info: {
+            activityHeatmap: "Shows message activity by hour of day and day of week. Each cell represents the number of messages sent during that time period across all analyzed chats.",
+            topContacts: "Ranks all users (including yourself as 'Вы'/'You') by total number of messages sent. Shows the most active participants across all analyzed chats.",
+            messageTimeline: "Shows messaging activity over time, allowing you to see periods of high and low activity in your chats. Helps identify communication patterns and trends.",
+            interactionNetwork: "Heatmap showing message interactions between top 10 users. Diagonal cells show each user's total message count. Off-diagonal cells show combined messages between users in shared chats.",
+            responseTime: "Measures how quickly users respond to messages from others. Only considers realistic response times (1 minute to 24 hours) and ranks users by their average response speed.",
+            wordCloud: "Shows the most frequently used words across all messages. Filters out common words and words shorter than 3 characters. Font size reflects usage frequency.",
+            emojiAnalysis: "Analyzes emoji usage patterns across all messages. Shows the most popular emojis with their usage counts and frequency percentages."
+        }
     },
     
     // Time units

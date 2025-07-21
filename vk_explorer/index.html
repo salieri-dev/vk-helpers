@@ -177,10 +177,6 @@
                                     <input type="checkbox" id="analysis-emoji-analysis" checked>
                                     <span data-i18n="analytics.emojiAnalysis">Emoji Usage</span>
                                 </label>
-                                <label class="analysis-option">
-                                    <input type="checkbox" id="analysis-sentiment" checked>
-                                    <span data-i18n="analytics.sentimentAnalysis">Sentiment Over Time</span>
-                                </label>
                             </div>
                             <div class="select-all-buttons">
                                 <button id="select-all-analysis-types" data-i18n="selection.selectAll">Select All</button>
@@ -233,7 +229,13 @@
                             
                             <!-- Activity Heatmap -->
                             <div class="chart-container">
-                                <h4 data-i18n="analytics.activityHeatmap">Activity Heatmap</h4>
+                                <div class="chart-header">
+                                    <h4 data-i18n="analytics.activityHeatmap">Activity Heatmap</h4>
+                                    <button class="info-button" data-info="activity-heatmap">ℹ️</button>
+                                </div>
+                                <div class="info-panel" id="info-activity-heatmap" style="display: none;">
+                                    <p data-i18n="analytics.info.activityHeatmap">Shows message activity by hour of day and day of week. Each cell represents the number of messages sent during that time period across all analyzed chats.</p>
+                                </div>
                                 <div id="activity-heatmap" class="heatmap-container">
                                     <div class="loading-placeholder">Loading heatmap...</div>
                                 </div>
@@ -241,7 +243,13 @@
                             
                             <!-- Top Contacts -->
                             <div class="chart-container">
-                                <h4 data-i18n="analytics.topContacts">Top Contacts</h4>
+                                <div class="chart-header">
+                                    <h4 data-i18n="analytics.topContacts">Top Contacts</h4>
+                                    <button class="info-button" data-info="top-contacts">ℹ️</button>
+                                </div>
+                                <div class="info-panel" id="info-top-contacts" style="display: none;">
+                                    <p data-i18n="analytics.info.topContacts">Ranks all users (including yourself as "Вы"/"You") by total number of messages sent. Shows the most active participants across all analyzed chats.</p>
+                                </div>
                                 <div id="top-contacts-chart" class="chart">
                                     <div class="loading-placeholder">Loading top contacts...</div>
                                 </div>
@@ -249,7 +257,13 @@
                             
                             <!-- Message Timeline -->
                             <div class="chart-container">
-                                <h4 data-i18n="analytics.messageTimeline">Message Timeline</h4>
+                                <div class="chart-header">
+                                    <h4 data-i18n="analytics.messageTimeline">Message Timeline</h4>
+                                    <button class="info-button" data-info="message-timeline">ℹ️</button>
+                                </div>
+                                <div class="info-panel" id="info-message-timeline" style="display: none;">
+                                    <p data-i18n="analytics.info.messageTimeline">Shows the volume of messages over time grouped by month. Helps identify periods of high or low messaging activity and long-term trends.</p>
+                                </div>
                                 <div id="message-timeline-chart" class="chart">
                                     <div class="loading-placeholder">Loading timeline...</div>
                                 </div>
@@ -262,7 +276,13 @@
                             
                             <!-- Interaction Graph -->
                             <div class="chart-container">
-                                <h4 data-i18n="analytics.interactionGraph">Interaction Network</h4>
+                                <div class="chart-header">
+                                    <h4 data-i18n="analytics.interactionGraph">Interaction Network</h4>
+                                    <button class="info-button" data-info="interaction-network">ℹ️</button>
+                                </div>
+                                <div class="info-panel" id="info-interaction-network" style="display: none;">
+                                    <p data-i18n="analytics.info.interactionNetwork">Heatmap showing message interactions between top 10 users. Diagonal cells show each user's total message count. Off-diagonal cells show combined messages between users in shared chats.</p>
+                                </div>
                                 <div id="interaction-graph" class="graph-container">
                                     <div class="loading-placeholder">Loading interaction graph...</div>
                                 </div>
@@ -270,7 +290,13 @@
                             
                             <!-- Response Time Analysis -->
                             <div class="chart-container">
-                                <h4 data-i18n="analytics.responseTime">Response Time Analysis</h4>
+                                <div class="chart-header">
+                                    <h4 data-i18n="analytics.responseTime">Response Time Analysis</h4>
+                                    <button class="info-button" data-info="response-time">ℹ️</button>
+                                </div>
+                                <div class="info-panel" id="info-response-time" style="display: none;">
+                                    <p data-i18n="analytics.info.responseTime">Measures how quickly users respond to messages from others. Only considers realistic response times (1 minute to 24 hours) and ranks users by their average response speed.</p>
+                                </div>
                                 <div id="response-time-chart" class="chart">
                                     <div class="loading-placeholder">Loading response times...</div>
                                 </div>
@@ -283,7 +309,13 @@
                             
                             <!-- Word Cloud -->
                             <div class="chart-container">
-                                <h4 data-i18n="analytics.wordCloud">Most Used Words</h4>
+                                <div class="chart-header">
+                                    <h4 data-i18n="analytics.wordCloud">Most Used Words</h4>
+                                    <button class="info-button" data-info="word-cloud">ℹ️</button>
+                                </div>
+                                <div class="info-panel" id="info-word-cloud" style="display: none;">
+                                    <p data-i18n="analytics.info.wordCloud">Shows the most frequently used words across all messages. Filters out common words (like "и", "в", "the", "and") and words shorter than 3 characters. Font size reflects usage frequency.</p>
+                                </div>
                                 <div id="word-cloud" class="wordcloud-container">
                                     <div class="loading-placeholder">Loading word cloud...</div>
                                 </div>
@@ -291,19 +323,18 @@
                             
                             <!-- Emoji Analysis -->
                             <div class="chart-container">
-                                <h4 data-i18n="analytics.emojiAnalysis">Emoji Usage</h4>
+                                <div class="chart-header">
+                                    <h4 data-i18n="analytics.emojiAnalysis">Emoji Usage</h4>
+                                    <button class="info-button" data-info="emoji-analysis">ℹ️</button>
+                                </div>
+                                <div class="info-panel" id="info-emoji-analysis" style="display: none;">
+                                    <p data-i18n="analytics.info.emojiAnalysis">Analyzes emoji usage patterns across all messages. Shows the most popular emojis with their usage counts and frequency percentages.</p>
+                                </div>
                                 <div id="emoji-analysis" class="emoji-container">
                                     <div class="loading-placeholder">Loading emoji analysis...</div>
                                 </div>
                             </div>
                             
-                            <!-- Sentiment Analysis -->
-                            <div class="chart-container">
-                                <h4 data-i18n="analytics.sentimentAnalysis">Sentiment Over Time</h4>
-                                <div id="sentiment-chart" class="chart">
-                                    <div class="loading-placeholder">Loading sentiment analysis...</div>
-                                </div>
-                            </div>
                         </div>
                         
                         <!-- Export Options -->

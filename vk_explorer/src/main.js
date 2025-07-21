@@ -59,6 +59,9 @@ document.addEventListener('DOMContentLoaded', () => {
         currentTheme = e.target.value;
         document.documentElement.setAttribute('data-theme', currentTheme);
         localStorage.setItem('archive-dashboard-theme', currentTheme);
+        
+        // [NEW] Update chart themes
+        visualizer.updateTheme(currentTheme);
     });
 
     // --- UI Logic ---
@@ -286,6 +289,22 @@ document.addEventListener('DOMContentLoaded', () => {
     dom.startAnalysisButton.addEventListener('click', startAnalysis);
     dom.exportJsonButton.addEventListener('click', () => exportAnalytics('json'));
     dom.exportCsvButton.addEventListener('click', () => exportAnalytics('csv'));
+    
+    // Info panel functionality
+    document.addEventListener('click', (e) => {
+        if (e.target.classList.contains('info-button')) {
+            e.preventDefault();
+            const infoType = e.target.getAttribute('data-info');
+            const infoPanelId = `info-${infoType}`;
+            const infoPanel = document.getElementById(infoPanelId);
+            
+            if (infoPanel) {
+                const isVisible = infoPanel.style.display !== 'none';
+                infoPanel.style.display = isVisible ? 'none' : 'block';
+                e.target.textContent = isVisible ? 'ℹ️' : '❌';
+            }
+        }
+    });
 
     function switchTab(tabName) {
         // Update tab buttons
@@ -321,6 +340,16 @@ document.addEventListener('DOMContentLoaded', () => {
             alert(t('analytics.noAnalysisSelected') || 'Please select at least one analysis type');
             return;
         }
+
+        // Reset analytics for new analysis - this fixes the reload issue
+        analytics = new VKAnalytics();
+        analyticsProcessed = false;
+        
+        // Clear previous results
+        dom.analyticsResults.style.display = 'none';
+        
+        // Clear previous chart instances to prevent conflicts
+        visualizer = new AnalyticsVisualizer();
 
         dom.startAnalysisButton.disabled = true;
         dom.startAnalysisButton.textContent = t('analytics.analyzing') || 'Analyzing...';
@@ -412,11 +441,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 key: 'interactionNetwork',
                 name: 'Mapping interaction network...',
                 fn: () => {
-                    const interactions = analytics.getInteractionData();
-                    if (interactions) {
-                        visualizer.renderInteractionGraph(dom.interactionGraph, interactions);
+                    const heatmapData = analytics.getInteractionHeatmapData();
+                    if (heatmapData) {
+                        visualizer.renderInteractionHeatmap(dom.interactionGraph, heatmapData);
                     }
-                    return interactions;
+                    return heatmapData;
                 }
             },
             {
@@ -452,17 +481,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     return emojiData;
                 }
             },
-            {
-                key: 'sentiment',
-                name: 'Computing sentiment analysis...',
-                fn: () => {
-                    const sentimentData = analytics.getSentimentAnalysis();
-                    if (sentimentData) {
-                        visualizer.renderSentimentChart(dom.sentimentChart, sentimentData);
-                    }
-                    return sentimentData;
-                }
-            }
+            // Sentiment analysis removed due to resource constraints
         ];
     
         // Hide progress and show results
@@ -488,7 +507,7 @@ document.addEventListener('DOMContentLoaded', () => {
             await new Promise(resolve => setTimeout(resolve, 200));
             
             try {
-                component.fn();
+                await component.fn(); // [MODIFIED] Add await here to handle the async function
             } catch (error) {
                 console.warn(`Failed to render ${component.name}:`, error);
             }
@@ -588,8 +607,7 @@ document.addEventListener('DOMContentLoaded', () => {
             interactionNetwork: dom.analysisInteractionNetwork.checked,
             responseTimes: dom.analysisResponseTimes.checked,
             wordCloud: dom.analysisWordCloud.checked,
-            emojiAnalysis: dom.analysisEmojiAnalysis.checked,
-            sentiment: dom.analysisSentiment.checked
+            emojiAnalysis: dom.analysisEmojiAnalysis.checked
         };
     }
 
@@ -607,7 +625,7 @@ document.addEventListener('DOMContentLoaded', () => {
         for (const index of selectedAlbumIndexes) {
             const album = foundAlbums[index];
             const html = decoder.decode(await album.file.async('uint8array'));
-            mediaFilesToDownload.push(...parseAlbumHtml(album.name, html));
+            mediaFilesToDownload.push(...await parseAlbumHtml(album.name, html, zipFile, decoder));
         }
 
         const selectedChatIds = [...document.querySelectorAll('.chat-checkbox:checked')].map(cb => cb.value);
@@ -735,7 +753,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (exifEnabled && parsedDate && window.piexif &&
                     (!mediaFile.mediaType || mediaFile.mediaType === 'image')) {
                     const originalSize = blob.size;
-                    blob = await addExifData(blob, parsedDate, mediaFile.path.split('/').pop());
+                    blob = await addExifData(blob, parsedDate, mediaFile.path.split('/').pop(), mediaFile.metadata);
                     exifAdded = blob.size !== originalSize;
                 }
                 
@@ -880,14 +898,30 @@ document.addEventListener('DOMContentLoaded', () => {
         failedDownloads = [];
         currentRetryAttempt = 0;
         
-        // Reset analytics
+        // Reset analytics and visualizer completely
         analytics = new VKAnalytics();
+        visualizer = new AnalyticsVisualizer();
         analyticsProcessed = false;
         dom.analyticsConfiguration.style.display = 'block';
         dom.analyticsProgressArea.style.display = 'none';
         dom.analyticsResults.style.display = 'none';
         dom.analyticsChatList.innerHTML = '';
         switchTab('download'); // Reset to download tab
+        
+        // Clear all analytics result containers
+        dom.wordCloud.innerHTML = '';
+        dom.emojiAnalysis.innerHTML = '';
+        dom.activityHeatmap.innerHTML = '';
+        dom.topContactsChart.innerHTML = '';
+        dom.messageTimelineChart.innerHTML = '';
+        dom.interactionGraph.innerHTML = '';
+        dom.responseTimeChart.innerHTML = '';
+        
+        // Reset analytics statistics displays
+        if (dom.totalMessages) dom.totalMessages.textContent = '0';
+        if (dom.totalChats) dom.totalChats.textContent = '0';
+        if (dom.mostActiveDay) dom.mostActiveDay.textContent = '';
+        if (dom.mostActiveHour) dom.mostActiveHour.textContent = '';
         
         dom.albumList.innerHTML = '';
         dom.chatList.innerHTML = '';

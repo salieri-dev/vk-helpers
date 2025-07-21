@@ -12,6 +12,7 @@
     "vite": "^7.0.4"
   },
   "dependencies": {
+    "apexcharts": "^5.2.0",
     "jszip": "^3.10.1",
     "piexifjs": "^1.0.6"
   }

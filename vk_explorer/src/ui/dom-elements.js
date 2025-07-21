@@ -68,7 +68,6 @@ export const analysisInteractionNetwork = document.getElementById('analysis-inte
 export const analysisResponseTimes = document.getElementById('analysis-response-times');
 export const analysisWordCloud = document.getElementById('analysis-word-cloud');
 export const analysisEmojiAnalysis = document.getElementById('analysis-emoji-analysis');
-export const analysisSentiment = document.getElementById('analysis-sentiment');
 
 // Analytics statistics elements
 export const totalMessages = document.getElementById('total-messages');
@@ -84,7 +83,6 @@ export const interactionGraph = document.getElementById('interaction-graph');
 export const responseTimeChart = document.getElementById('response-time-chart');
 export const wordCloud = document.getElementById('word-cloud');
 export const emojiAnalysis = document.getElementById('emoji-analysis');
-export const sentimentChart = document.getElementById('sentiment-chart');
 
 // Analytics export buttons
 export const exportJsonButton = document.getElementById('export-json-button');
