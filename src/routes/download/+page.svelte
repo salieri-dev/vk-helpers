@@ -4,22 +4,36 @@
 	import { goto } from '$app/navigation';
 	import { archiveStore } from '$lib/stores/archive';
 	import { extractImagesFromChats } from '$lib/utils/imageExtractor';
+	import { extractImagesFromAlbums } from '$lib/utils/albumImageExtractor';
 	import { downloadImagesAsZip, downloadZipFile, generateZipFilename } from '$lib/utils/imageDownloader';
 	import type { ImageInfo, ImageExtractionProgress } from '$lib/utils/imageExtractor';
+	import type { AlbumImageExtractionProgress } from '$lib/utils/albumImageExtractor';
 	import type { DownloadProgress, DownloadResult } from '$lib/utils/imageDownloader';
 
 	let archiveData: typeof $archiveStore;
 	let selectedChatIds: string[] = [];
 	let selectedChats: { id: string; name: string }[] = [];
+	let selectedAlbumIds: string[] = [];
+	let selectedAlbums: { id: string; name: string }[] = [];
+	let downloadType: 'chats' | 'albums' = 'chats';
 	
 	// State management
-	let currentPhase: 'extraction' | 'download' | 'complete' | 'error' = 'extraction';
+	let currentPhase: 'config' | 'extraction' | 'download' | 'complete' | 'error' = 'config';
 	let isProcessing = false;
 	let extractionProgress: ImageExtractionProgress | null = null;
+	let albumExtractionProgress: AlbumImageExtractionProgress | null = null;
 	let downloadProgress: DownloadProgress | null = null;
 	let extractedImages: ImageInfo[] = [];
 	let downloadResult: DownloadResult | null = null;
 	let error: string | null = null;
+
+	// Configuration options
+	let downloadConfig = {
+		batchSize: 10,
+		concurrentDownloads: 3,
+		retryAttempts: 2,
+		addExifMetadata: true
+	};
 
 	onMount(() => {
 		archiveStore.subscribe(data => {
@@ -34,41 +48,77 @@
 
 		// Get selected chat IDs from URL parameters
 		const chatIds = $page.url.searchParams.get('chats');
+		const albumIds = $page.url.searchParams.get('albums');
+		
 		if (chatIds) {
+			downloadType = 'chats';
 			selectedChatIds = chatIds.split(',');
 			selectedChats = selectedChatIds.map(id => ({
 				id,
 				name: archiveData?.chats.find(c => c.id === id)?.name || `Chat ${id}`
 			}));
 
-			// Start the process automatically
-			startImageExtraction();
+			// Show configuration first
+			currentPhase = 'config';
+		} else if (albumIds) {
+			downloadType = 'albums';
+			selectedAlbumIds = albumIds.split(',');
+			selectedAlbums = selectedAlbumIds.map(id => ({
+				id,
+				name: archiveData?.albums.find(a => a.id === id)?.name || `Album ${id}`
+			}));
+
+			// Show configuration first
+			currentPhase = 'config';
 		} else {
-			goto('/chats');
+			// No valid parameters, redirect back
+			goto('/');
 		}
 	});
 
 	async function startImageExtraction() {
-		if (!archiveData || selectedChatIds.length === 0) return;
+		if (!archiveData) return;
+		
+		if (downloadType === 'chats' && selectedChatIds.length === 0) return;
+		if (downloadType === 'albums' && selectedAlbumIds.length === 0) return;
 
 		isProcessing = true;
 		currentPhase = 'extraction';
 		error = null;
+		extractionProgress = null;
+		albumExtractionProgress = null;
 
 		try {
-			extractedImages = await extractImagesFromChats(
-				archiveData,
-				selectedChatIds,
-				(progress) => {
-					extractionProgress = progress;
-				}
-			);
+			if (downloadType === 'chats') {
+				extractedImages = await extractImagesFromChats(
+					archiveData,
+					selectedChatIds,
+					(progress) => {
+						extractionProgress = progress;
+					}
+				);
 
-			if (extractedImages.length === 0) {
-				error = 'No images found in the selected chats.';
-				currentPhase = 'error';
-				isProcessing = false;
-				return;
+				if (extractedImages.length === 0) {
+					error = 'No images found in the selected chats.';
+					currentPhase = 'error';
+					isProcessing = false;
+					return;
+				}
+			} else if (downloadType === 'albums') {
+				extractedImages = await extractImagesFromAlbums(
+					archiveData,
+					selectedAlbumIds,
+					(progress) => {
+						albumExtractionProgress = progress;
+					}
+				);
+
+				if (extractedImages.length === 0) {
+					error = 'No photos found in the selected albums.';
+					currentPhase = 'error';
+					isProcessing = false;
+					return;
+				}
 			}
 
 			// Start download phase
@@ -89,7 +139,10 @@
 
 		try {
 			downloadResult = await downloadImagesAsZip(extractedImages, {
-				addExifMetadata: true,
+				batchSize: downloadConfig.batchSize,
+				concurrentDownloads: downloadConfig.concurrentDownloads,
+				retryAttempts: downloadConfig.retryAttempts,
+				addExifMetadata: downloadConfig.addExifMetadata,
 				onProgress: (progress) => {
 					downloadProgress = progress;
 				}
@@ -110,8 +163,16 @@
 		}
 	}
 
+	function startDownloadProcess() {
+		startImageExtraction();
+	}
+
 	function goBack() {
-		goto('/chats');
+		if (downloadType === 'chats') {
+			goto('/chats');
+		} else {
+			goto('/albums');
+		}
 	}
 
 	function retryDownload() {
@@ -131,33 +192,133 @@
 </script>
 
 <svelte:head>
-	<title>Download Images - VK Archive Analytics</title>
+	<title>Download {downloadType === 'chats' ? 'Images' : 'Photos'} - VK Archive Analytics</title>
 </svelte:head>
 
 <main class="container">
 	<header>
-		<button class="back-button" on:click={goBack}>← Back to Chat Selection</button>
-		<h1>Download Images</h1>
-		<p>Downloading images from {selectedChats.length} selected chat{selectedChats.length !== 1 ? 's' : ''}</p>
+		<button class="back-button" on:click={goBack}>← Back to {downloadType === 'chats' ? 'Chat' : 'Album'} Selection</button>
+		<h1>Download {downloadType === 'chats' ? 'Images' : 'Photos'}</h1>
+		{#if downloadType === 'chats'}
+			<p>Downloading images from {selectedChats.length} selected chat{selectedChats.length !== 1 ? 's' : ''}</p>
+		{:else}
+			<p>Downloading photos from {selectedAlbums.length} selected album{selectedAlbums.length !== 1 ? 's' : ''}</p>
+		{/if}
 	</header>
 
-	<div class="selected-chats">
-		<h3>Selected Chats:</h3>
-		<ul>
-			{#each selectedChats as chat}
-				<li>{chat.name}</li>
-			{/each}
-		</ul>
+	<div class="selected-items">
+		{#if downloadType === 'chats'}
+			<h3>Selected Chats:</h3>
+			<ul>
+				{#each selectedChats as chat}
+					<li>{chat.name}</li>
+				{/each}
+			</ul>
+		{:else}
+			<h3>Selected Albums:</h3>
+			<ul>
+				{#each selectedAlbums as album}
+					<li>{album.name}</li>
+				{/each}
+			</ul>
+		{/if}
 	</div>
+
+	{#if currentPhase === 'config'}
+		<section class="config-section">
+			<div class="config-header">
+				<h2>🔧 Download Configuration</h2>
+				<p>Configure download settings to optimize performance and control the process</p>
+			</div>
+
+			<div class="config-options">
+				<div class="config-group">
+					<label for="batchSize">
+						<span class="config-label">Batch Size</span>
+						<small class="config-description">Number of images processed in each batch</small>
+					</label>
+					<select id="batchSize" bind:value={downloadConfig.batchSize}>
+						<option value={5}>5 (Slow, stable)</option>
+						<option value={10}>10 (Balanced)</option>
+						<option value={20}>20 (Fast)</option>
+						<option value={50}>50 (Very fast)</option>
+					</select>
+				</div>
+
+				<div class="config-group">
+					<label for="concurrentDownloads">
+						<span class="config-label">Concurrent Downloads</span>
+						<small class="config-description">Number of simultaneous downloads</small>
+					</label>
+					<select id="concurrentDownloads" bind:value={downloadConfig.concurrentDownloads}>
+						<option value={1}>1 (Conservative)</option>
+						<option value={2}>2 (Careful)</option>
+						<option value={3}>3 (Balanced)</option>
+						<option value={5}>5 (Aggressive)</option>
+						<option value={8}>8 (Maximum)</option>
+					</select>
+				</div>
+
+				<div class="config-group">
+					<label for="retryAttempts">
+						<span class="config-label">Retry Attempts</span>
+						<small class="config-description">How many times to retry failed downloads</small>
+					</label>
+					<select id="retryAttempts" bind:value={downloadConfig.retryAttempts}>
+						<option value={0}>0 (No retries)</option>
+						<option value={1}>1 (Single retry)</option>
+						<option value={2}>2 (Double retry)</option>
+						<option value={3}>3 (Triple retry)</option>
+					</select>
+				</div>
+
+				<div class="config-group checkbox-group">
+					<label for="addExifMetadata" class="checkbox-label">
+						<input
+							type="checkbox"
+							id="addExifMetadata"
+							bind:checked={downloadConfig.addExifMetadata}
+						/>
+						<span class="config-label">Add EXIF Metadata</span>
+						<small class="config-description">Include timestamp and source information in image files</small>
+					</label>
+				</div>
+			</div>
+
+			<div class="config-summary">
+				<h4>Configuration Summary</h4>
+				<ul>
+					<li>Will process <strong>{downloadConfig.batchSize} images</strong> at a time</li>
+					<li>Up to <strong>{downloadConfig.concurrentDownloads} simultaneous</strong> downloads</li>
+					<li>Will retry failed downloads <strong>{downloadConfig.retryAttempts} time{downloadConfig.retryAttempts !== 1 ? 's' : ''}</strong></li>
+					<li>{downloadConfig.addExifMetadata ? 'Will add' : 'Will not add'} <strong>EXIF metadata</strong></li>
+				</ul>
+			</div>
+
+			<div class="config-actions">
+				<button class="config-btn secondary" on:click={goBack}>
+					← Back
+				</button>
+				<button class="config-btn primary" on:click={startDownloadProcess}>
+					Start Download Process
+				</button>
+			</div>
+		</section>
+	{/if}
 
 	{#if currentPhase === 'extraction' && isProcessing}
 		<section class="progress-section">
 			<div class="progress-header">
-				<h2>🔍 Extracting Images</h2>
-				<p>Scanning message files for images...</p>
+				{#if downloadType === 'chats'}
+					<h2>🔍 Extracting Images</h2>
+					<p>Scanning message files for images...</p>
+				{:else}
+					<h2>📸 Extracting Photos</h2>
+					<p>Processing photo albums...</p>
+				{/if}
 			</div>
 
-			{#if extractionProgress}
+			{#if downloadType === 'chats' && extractionProgress}
 				<div class="progress-details">
 					<div class="current-step">{extractionProgress.currentStep}</div>
 					<div class="progress-stats">
@@ -166,9 +327,24 @@
 						<span>Found: {extractionProgress.foundImages} images</span>
 					</div>
 					<div class="progress-bar">
-						<div 
-							class="progress-fill" 
+						<div
+							class="progress-fill"
 							style="width: {Math.round((extractionProgress.processedChats / extractionProgress.totalChats) * 100)}%"
+						></div>
+					</div>
+				</div>
+			{:else if downloadType === 'albums' && albumExtractionProgress}
+				<div class="progress-details">
+					<div class="current-step">{albumExtractionProgress.status}</div>
+					<div class="progress-stats">
+						<span>Album: {albumExtractionProgress.currentAlbum}</span>
+						<span>Progress: {albumExtractionProgress.albumsProcessed}/{albumExtractionProgress.totalAlbums}</span>
+						<span>Found: {albumExtractionProgress.photosFound} photos</span>
+					</div>
+					<div class="progress-bar">
+						<div
+							class="progress-fill"
+							style="width: {Math.round((albumExtractionProgress.albumsProcessed / albumExtractionProgress.totalAlbums) * 100)}%"
 						></div>
 					</div>
 				</div>
@@ -297,7 +473,7 @@
 		margin-bottom: 0.5rem;
 	}
 
-	.selected-chats {
+	.selected-items {
 		background: #f8f9fa;
 		padding: 1.5rem;
 		border-radius: 8px;
@@ -502,6 +678,174 @@
 
 	.failed-urls a:hover {
 		text-decoration: underline;
+	}
+
+	/* Configuration Section Styles */
+	.config-section {
+		background: white;
+		padding: 2rem;
+		border-radius: 12px;
+		margin-bottom: 2rem;
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+		border: 2px solid #e3f2fd;
+	}
+
+	.config-header {
+		text-align: center;
+		margin-bottom: 2rem;
+	}
+
+	.config-header h2 {
+		color: #4a90e2;
+		margin-bottom: 0.5rem;
+	}
+
+	.config-options {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+		gap: 1.5rem;
+		margin-bottom: 2rem;
+	}
+
+	.config-group {
+		display: flex;
+		flex-direction: column;
+	}
+
+	.config-group label {
+		margin-bottom: 0.5rem;
+		font-weight: 500;
+	}
+
+	.config-label {
+		color: #333;
+		font-size: 1rem;
+		display: block;
+		margin-bottom: 0.25rem;
+	}
+
+	.config-description {
+		color: #666;
+		font-size: 0.85rem;
+		font-weight: normal;
+	}
+
+	.config-group select {
+		padding: 0.75rem;
+		border: 2px solid #e0e0e0;
+		border-radius: 6px;
+		font-size: 1rem;
+		background: white;
+		transition: border-color 0.2s ease;
+	}
+
+	.config-group select:focus {
+		outline: none;
+		border-color: #4a90e2;
+		box-shadow: 0 0 0 3px rgba(74, 144, 226, 0.1);
+	}
+
+	.checkbox-group {
+		flex-direction: row;
+		align-items: flex-start;
+	}
+
+	.checkbox-label {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		cursor: pointer;
+	}
+
+	.checkbox-label input[type="checkbox"] {
+		margin-right: 0.75rem;
+		margin-bottom: 0.5rem;
+		transform: scale(1.2);
+		accent-color: #4a90e2;
+	}
+
+	.config-summary {
+		background: #f8f9fa;
+		border: 1px solid #e9ecef;
+		border-radius: 8px;
+		padding: 1.5rem;
+		margin-bottom: 2rem;
+	}
+
+	.config-summary h4 {
+		color: #495057;
+		margin-bottom: 1rem;
+	}
+
+	.config-summary ul {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+	}
+
+	.config-summary li {
+		padding: 0.5rem 0;
+		color: #6c757d;
+		border-bottom: 1px solid #e9ecef;
+	}
+
+	.config-summary li:last-child {
+		border-bottom: none;
+	}
+
+	.config-actions {
+		display: flex;
+		gap: 1rem;
+		justify-content: center;
+		flex-wrap: wrap;
+	}
+
+	.config-btn {
+		padding: 1rem 2rem;
+		border-radius: 8px;
+		font-size: 1.1rem;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all 0.2s ease;
+		border: none;
+		min-width: 160px;
+	}
+
+	.config-btn.primary {
+		background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%);
+		color: white;
+	}
+
+	.config-btn.primary:hover {
+		background: linear-gradient(135deg, #357abd 0%, #2c5aa0 100%);
+		transform: translateY(-2px);
+		box-shadow: 0 4px 16px rgba(74, 144, 226, 0.3);
+	}
+
+	.config-btn.secondary {
+		background: #6c757d;
+		color: white;
+	}
+
+	.config-btn.secondary:hover {
+		background: #5a6268;
+		transform: translateY(-2px);
+		box-shadow: 0 4px 16px rgba(108, 117, 125, 0.3);
+	}
+
+	@media (max-width: 768px) {
+		.config-options {
+			grid-template-columns: 1fr;
+			gap: 1rem;
+		}
+		
+		.config-actions {
+			flex-direction: column;
+		}
+		
+		.config-btn {
+			min-width: 100%;
+		}
 	}
 
 	@media (max-width: 600px) {

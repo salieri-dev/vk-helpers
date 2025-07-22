@@ -1,6 +1,7 @@
 import { writable } from 'svelte/store';
 import JSZip from 'jszip';
 import { decodeWindows1251 } from '$lib/utils/encoding';
+import { parseAlbumsFromZip } from '$lib/utils/albumParser';
 
 export interface ChatInfo {
 	id: string;
@@ -9,14 +10,34 @@ export interface ChatInfo {
 	lastMessage: Date | null;
 }
 
+export interface PhotoInfo {
+	id: string;
+	url: string;
+	vkUrl: string;
+	timestamp: Date | null;
+	altText: string;
+}
+
+export interface AlbumInfo {
+	id: string;
+	name: string;
+	photoCount: number;
+	createdAt: Date | null;
+	updatedAt: Date | null;
+	filename: string;
+	photos?: PhotoInfo[];
+}
+
 export interface ArchiveData {
 	file: File | null;
 	zip: JSZip | null;
 	chats: ChatInfo[];
+	albums: AlbumInfo[];
 	isLoading: boolean;
 	error: string | null;
 	processingStep?: string;
 	processedChats?: number;
+	processedAlbums?: number;
 	totalFiles?: number;
 }
 
@@ -25,6 +46,7 @@ function createArchiveStore() {
 		file: null,
 		zip: null,
 		chats: [],
+		albums: [],
 		isLoading: false,
 		error: null
 	});
@@ -66,14 +88,26 @@ function createArchiveStore() {
 				});
 				// console.log('✅ Chats extracted:', chats.length, 'chats found');
 				
+				// console.log('🔍 Extracting albums from ZIP...');
+				const albums = await parseAlbumsFromZip(zip, (step, processedAlbums) => {
+					update(state => ({
+						...state,
+						processingStep: step,
+						processedAlbums
+					}));
+				});
+				// console.log('✅ Albums extracted:', albums.length, 'albums found');
+				
 				update(state => ({
 					...state,
 					file,
 					zip,
 					chats,
+					albums,
 					isLoading: false,
 					processingStep: undefined,
 					processedChats: undefined,
+					processedAlbums: undefined,
 					totalFiles: undefined
 				}));
 				// console.log('✅ Archive store updated successfully');
@@ -94,10 +128,12 @@ function createArchiveStore() {
 				file: null,
 				zip: null,
 				chats: [],
+				albums: [],
 				isLoading: false,
 				error: null,
 				processingStep: undefined,
 				processedChats: undefined,
+				processedAlbums: undefined,
 				totalFiles: undefined
 			});
 		}

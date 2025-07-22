@@ -35,9 +35,9 @@
 			// Store the file in the archive store
 			await archiveStore.setFile(file);
 			
-			console.log('✅ archiveStore.setFile completed, navigating to /chats');
-			// Navigate to chat selection page
-			await goto('/chats');
+			console.log('✅ archiveStore.setFile completed, showing navigation options');
+			// The archive is loaded, now user can choose between albums and chats
+			// No automatic navigation - let them choose on this page
 		} catch (error) {
 			console.error('❌ Error processing archive:', error);
 			alert('Error processing archive file. Please try again.');
@@ -67,7 +67,10 @@
 					<p>✅ ZIP file loaded ({formatFileSize(archiveData.file?.size || 0)})</p>
 					<p>{archiveData.processingStep || '🔍 Extracting chat data...'}</p>
 					{#if archiveData.processedChats !== undefined}
-						<p>📊 Found {archiveData.processedChats} chat{archiveData.processedChats !== 1 ? 's' : ''}</p>
+						<p>💬 Found {archiveData.processedChats} chat{archiveData.processedChats !== 1 ? 's' : ''}</p>
+					{/if}
+					{#if archiveData.processedAlbums !== undefined}
+						<p>📸 Found {archiveData.processedAlbums} album{archiveData.processedAlbums !== 1 ? 's' : ''}</p>
 					{/if}
 					{#if archiveData.totalFiles !== undefined}
 						<p>📁 Processing {archiveData.totalFiles} archive files</p>
@@ -75,7 +78,65 @@
 				</div>
 			</div>
 		</div>
+	{:else if archiveData.file && archiveData.zip}
+		<!-- Archive loaded - show navigation options -->
+		<section class="navigation-section">
+			<h2>Choose What to Explore</h2>
+			<p>Your archive has been loaded successfully! What would you like to explore?</p>
+			
+			<div class="navigation-grid">
+				<div class="nav-card">
+					<div class="nav-card-icon">💬</div>
+					<h3>Chats & Messages</h3>
+					<p>Analyze your conversations, message patterns, and chat statistics</p>
+					<div class="nav-card-stats">
+						<span class="stats-number">{archiveData.chats.length}</span>
+						<span class="stats-label">chat{archiveData.chats.length !== 1 ? 's' : ''} found</span>
+					</div>
+					<ul class="feature-list">
+						<li>📊 Message frequency analysis</li>
+						<li>📈 Timeline and activity patterns</li>
+						<li>☁️ Word clouds and trends</li>
+						<li>📸 Download chat images</li>
+					</ul>
+					<button class="nav-button primary" on:click={() => goto('/chats')}>
+						Explore Chats
+					</button>
+				</div>
+				
+				<div class="nav-card">
+					<div class="nav-card-icon">📸</div>
+					<h3>Photo Albums</h3>
+					<p>Browse and download photos from your VK albums</p>
+					<div class="nav-card-stats">
+						<span class="stats-number">{archiveData.albums.length}</span>
+						<span class="stats-label">album{archiveData.albums.length !== 1 ? 's' : ''} found</span>
+					</div>
+					<ul class="feature-list">
+						<li>🖼️ Browse album collections</li>
+						<li>📅 View photo timelines</li>
+						<li>💾 Bulk download photos</li>
+						<li>🔍 Search by date ranges</li>
+					</ul>
+					<button class="nav-button secondary" on:click={() => goto('/albums')}>
+						Explore Albums
+					</button>
+				</div>
+			</div>
+			
+			<div class="archive-info">
+				<h4>Archive Information</h4>
+				<div class="archive-details">
+					<span>📁 File: {archiveData.file.name}</span>
+					<span>📊 Size: {formatFileSize(archiveData.file.size)}</span>
+					<button class="reset-button" on:click={() => archiveStore.reset()}>
+						Load Different Archive
+					</button>
+				</div>
+			</div>
+		</section>
 	{:else}
+		<!-- No archive loaded - show upload -->
 		<section class="upload-section">
 			<h2>Upload Your Archive</h2>
 			<p>Select your VK GDPR archive ZIP file to begin analysis. All processing happens locally in your browser - no data is sent to any server.</p>
@@ -86,10 +147,12 @@
 		<section class="features">
 			<h3>What you can analyze:</h3>
 			<ul>
-				<li>Message frequency and patterns</li>
-				<li>Chat statistics and activity</li>
-				<li>Timeline analysis</li>
-				<li>Word frequency and trends</li>
+				<li>💬 Message frequency and patterns</li>
+				<li>📊 Chat statistics and activity</li>
+				<li>📈 Timeline analysis</li>
+				<li>☁️ Word frequency and trends</li>
+				<li>📸 Photo albums and collections</li>
+				<li>💾 Bulk download capabilities</li>
 			</ul>
 		</section>
 	{/if}
@@ -257,5 +320,188 @@
 
 	.error-message button:hover {
 		background: #357abd;
+	}
+
+	/* Navigation Section Styles */
+	.navigation-section {
+		margin: 2rem 0;
+	}
+
+	.navigation-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+		gap: 2rem;
+		margin: 2rem 0;
+	}
+
+	.nav-card {
+		background: white;
+		border: 2px solid #e0e0e0;
+		border-radius: 12px;
+		padding: 2rem;
+		text-align: center;
+		transition: all 0.3s ease;
+		position: relative;
+		overflow: hidden;
+	}
+
+	.nav-card:hover {
+		border-color: #4a90e2;
+		transform: translateY(-4px);
+		box-shadow: 0 8px 25px rgba(74, 144, 226, 0.15);
+	}
+
+	.nav-card-icon {
+		font-size: 3rem;
+		margin-bottom: 1rem;
+	}
+
+	.nav-card h3 {
+		color: #333;
+		margin-bottom: 1rem;
+		font-size: 1.5rem;
+	}
+
+	.nav-card p {
+		color: #666;
+		margin-bottom: 1.5rem;
+		line-height: 1.5;
+	}
+
+	.nav-card-stats {
+		background: #f8f9fa;
+		border-radius: 8px;
+		padding: 1rem;
+		margin-bottom: 1.5rem;
+		border: 1px solid #e9ecef;
+	}
+
+	.stats-number {
+		font-size: 2rem;
+		font-weight: bold;
+		color: #4a90e2;
+		display: block;
+	}
+
+	.stats-label {
+		font-size: 0.9rem;
+		color: #666;
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+	}
+
+	.feature-list {
+		list-style: none;
+		padding: 0;
+		margin: 1.5rem 0;
+		text-align: left;
+	}
+
+	.feature-list li {
+		padding: 0.5rem 0;
+		color: #555;
+		font-size: 0.9rem;
+	}
+
+	.nav-button {
+		border: none;
+		padding: 1rem 2rem;
+		border-radius: 8px;
+		font-size: 1.1rem;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all 0.2s ease;
+		min-width: 200px;
+		text-transform: uppercase;
+		letter-spacing: 0.5px;
+	}
+
+	.nav-button.primary {
+		background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%);
+		color: white;
+	}
+
+	.nav-button.primary:hover {
+		background: linear-gradient(135deg, #357abd 0%, #2c5aa0 100%);
+		transform: translateY(-2px);
+		box-shadow: 0 4px 16px rgba(74, 144, 226, 0.3);
+	}
+
+	.nav-button.secondary {
+		background: linear-gradient(135deg, #28a745 0%, #218838 100%);
+		color: white;
+	}
+
+	.nav-button.secondary:hover {
+		background: linear-gradient(135deg, #218838 0%, #1e7e34 100%);
+		transform: translateY(-2px);
+		box-shadow: 0 4px 16px rgba(40, 167, 69, 0.3);
+	}
+
+	.archive-info {
+		background: #f8f9fa;
+		border-radius: 8px;
+		padding: 1.5rem;
+		margin-top: 2rem;
+		border: 1px solid #e9ecef;
+	}
+
+	.archive-info h4 {
+		margin-bottom: 1rem;
+		color: #495057;
+	}
+
+	.archive-details {
+		display: flex;
+		gap: 1rem;
+		align-items: center;
+		flex-wrap: wrap;
+	}
+
+	.archive-details span {
+		color: #6c757d;
+		font-size: 0.9rem;
+	}
+
+	.reset-button {
+		background: #6c757d;
+		color: white;
+		border: none;
+		padding: 0.5rem 1rem;
+		border-radius: 4px;
+		font-size: 0.9rem;
+		cursor: pointer;
+		transition: background 0.2s ease;
+	}
+
+	.reset-button:hover {
+		background: #5a6268;
+	}
+
+	/* Responsive Design */
+	@media (max-width: 768px) {
+		.navigation-grid {
+			grid-template-columns: 1fr;
+			gap: 1.5rem;
+		}
+
+		.nav-card {
+			padding: 1.5rem;
+		}
+
+		.nav-card-icon {
+			font-size: 2.5rem;
+		}
+
+		.nav-button {
+			min-width: 100%;
+			padding: 0.875rem 1.5rem;
+		}
+
+		.archive-details {
+			flex-direction: column;
+			align-items: flex-start;
+			gap: 0.5rem;
+		}
 	}
 </style>
