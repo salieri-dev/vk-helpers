@@ -87,6 +87,17 @@
 		goto(`/analytics?chats=${selectedChatIds.join(',')}`);
 	}
 
+	function downloadImages() {
+		if (selectedChats.size === 0) {
+			alert('Please select at least one chat to download images from.');
+			return;
+		}
+
+		// Store selected chats and navigate to download page
+		const selectedChatIds = Array.from(selectedChats);
+		goto(`/download?chats=${selectedChatIds.join(',')}`);
+	}
+
 	function formatDate(date: Date | null): string {
 		if (!date) return 'Unknown';
 		return new Intl.DateTimeFormat('ru-RU', {
@@ -208,13 +219,22 @@
 		</section>
 
 		<section class="actions">
-			<button
-				class="analyze-button"
-				disabled={selectedChats.size === 0}
-				on:click={analyzeSelected}
-			>
-				Analyze Selected Chats ({selectedChats.size})
-			</button>
+			<div class="action-buttons">
+				<button
+					class="analyze-button"
+					disabled={selectedChats.size === 0}
+					on:click={analyzeSelected}
+				>
+					📊 Analyze Selected Chats ({selectedChats.size})
+				</button>
+				<button
+					class="download-button"
+					disabled={selectedChats.size === 0}
+					on:click={downloadImages}
+				>
+					📸 Download Images ({selectedChats.size})
+				</button>
+			</div>
 		</section>
 	{:else}
 		<div class="no-chats">
@@ -445,22 +465,42 @@
 		text-align: center;
 	}
 
-	.analyze-button {
-		background: #4a90e2;
-		color: white;
+	.action-buttons {
+		display: flex;
+		gap: 1rem;
+		justify-content: center;
+		flex-wrap: wrap;
+	}
+
+	.analyze-button, .download-button {
 		border: none;
 		padding: 1rem 2rem;
 		font-size: 1.1rem;
 		border-radius: 8px;
 		cursor: pointer;
 		transition: background-color 0.2s ease;
+		min-width: 250px;
+	}
+
+	.analyze-button {
+		background: #4a90e2;
+		color: white;
+	}
+
+	.download-button {
+		background: #28a745;
+		color: white;
 	}
 
 	.analyze-button:hover:not(:disabled) {
 		background: #357abd;
 	}
 
-	.analyze-button:disabled {
+	.download-button:hover:not(:disabled) {
+		background: #218838;
+	}
+
+	.analyze-button:disabled, .download-button:disabled {
 		background: #ccc;
 		cursor: not-allowed;
 	}

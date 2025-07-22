@@ -37,6 +37,7 @@
 		"date-fns": "^4.1.0",
 		"iconv-lite": "^0.6.3",
 		"jszip": "^3.10.1",
+		"piexifjs": "^1.0.6",
 		"stopwords-ru": "^0.3.0",
 		"workbox-precaching": "^7.3.0",
 		"workbox-routing": "^7.3.0",
