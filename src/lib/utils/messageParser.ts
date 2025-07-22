@@ -1,0 +1,675 @@
+import JSZip from 'jszip';
+import { decodeWindows1251 } from '$lib/utils/encoding';
+import stopwords from 'stopwords-ru';
+
+export interface Message {
+	id: string;
+	sender: string;
+	isFromUser: boolean;
+	timestamp: Date;
+	content: string;
+	hasAttachment: boolean;
+	attachmentInfo: string;
+	edited: boolean;
+}
+
+export interface MessageTypeStats {
+	photos: number;
+	stickers: number;
+	forwardedMessages: number;
+	wallPosts: number;
+	voiceMessages: number;
+	documents: number;
+	textMessages: number;
+}
+
+export interface UserStats {
+	sender: string;
+	totalMessages: number;
+	wordCount: number;
+	averageMessageLength: number;
+	messageTypes: MessageTypeStats;
+	mostActiveHours: { [hour: number]: number };
+	mostActiveDays: { [day: string]: number };
+	topWords: { word: string; count: number }[];
+	userWordCounts?: { [word: string]: number };
+}
+
+export interface ChatAnalytics {
+	chatId: string;
+	chatName: string;
+	totalMessages: number;
+	userMessages: number;
+	otherMessages: number;
+	messages: Message[];
+	dateRange: {
+		start: Date;
+		end: Date;
+	};
+	wordCount: number;
+	averageMessageLength: number;
+	mostActiveHours: { [hour: number]: number };
+	mostActiveDays: { [day: string]: number };
+	topWords: { word: string; count: number }[];
+	messageTypes: MessageTypeStats;
+	userStats: UserStats[];
+}
+
+export async function parseMessagesForChats(
+	zip: JSZip,
+	chatIds: string[],
+	onProgress?: (step: string, processed: number, total: number) => void
+): Promise<ChatAnalytics[]> {
+	// console.log('🔍 parseMessagesForChats called with chatIds:', chatIds);
+	// console.log('🔍 ZIP file contains these paths:', Object.keys(zip.files));
+	
+	const analytics: ChatAnalytics[] = [];
+
+	onProgress?.('🔍 Counting message files...', 0, 1);
+
+	// First pass: count total message files across all chats for accurate progress tracking
+	let totalFiles = 0;
+	const chatFileMapping: { [chatId: string]: string[] } = {};
+	
+	for (const chatId of chatIds) {
+		const messageFiles = Object.keys(zip.files)
+			.filter(fileName =>
+				fileName.startsWith(`messages/${chatId}/messages`) &&
+				fileName.endsWith('.html')
+			)
+			.sort();
+		chatFileMapping[chatId] = messageFiles;
+		totalFiles += messageFiles.length;
+	}
+
+	onProgress?.('🔍 Starting message analysis...', 0, totalFiles);
+
+	let processedFiles = 0;
+	
+	for (let i = 0; i < chatIds.length; i++) {
+		const chatId = chatIds[i];
+		const chatFiles = chatFileMapping[chatId];
+		// console.log(`🔍 Processing chat ID: ${chatId} (${i + 1}/${chatIds.length}) with ${chatFiles.length} files`);
+		
+		onProgress?.(`📊 Analyzing chat ${i + 1} of ${chatIds.length}...`, processedFiles, totalFiles);
+		
+		const chatAnalytics = await parseChatMessages(zip, chatId, (fileProgress, totalChatFiles) => {
+			const currentFileProgress = processedFiles + fileProgress;
+			onProgress?.(`📊 Analyzing chat ${i + 1}/${chatIds.length} - Processing file ${currentFileProgress}/${totalFiles}`, currentFileProgress, totalFiles);
+		});
+		
+		if (chatAnalytics) {
+			// console.log(`✅ Successfully parsed chat ${chatId}:`, {
+			//	chatName: chatAnalytics.chatName,
+			//	totalMessages: chatAnalytics.totalMessages
+			// });
+			analytics.push(chatAnalytics);
+		} else {
+			console.warn(`❌ No data found for chat ${chatId}`);
+		}
+		
+		processedFiles += chatFiles.length;
+		onProgress?.(`✅ Completed chat ${i + 1} of ${chatIds.length}`, processedFiles, totalFiles);
+	}
+
+	onProgress?.('✅ Analysis complete!', totalFiles, totalFiles);
+	// console.log(`🔍 Final analytics array length: ${analytics.length}`);
+	return analytics;
+}
+
+async function parseChatMessages(
+	zip: JSZip,
+	chatId: string,
+	onFileProgress?: (processed: number, total: number) => void
+): Promise<ChatAnalytics | null> {
+	// console.log(`🔍 parseChatMessages called for chatId: ${chatId}`);
+	
+	// Find all message files for this chat
+	const messageFiles = Object.keys(zip.files)
+		.filter(fileName =>
+			fileName.startsWith(`messages/${chatId}/messages`) &&
+			fileName.endsWith('.html')
+		)
+		.sort(); // Sort to process in order
+
+	// console.log(`🔍 Found ${messageFiles.length} message files for chat ${chatId}:`, messageFiles);
+
+	if (messageFiles.length === 0) {
+		console.warn(`❌ No message files found for chat ${chatId}`);
+		// console.log(`🔍 Looking for pattern: messages/${chatId}/messages*.html`);
+		// console.log(`🔍 Available files matching messages/${chatId}/: `,
+		//	Object.keys(zip.files).filter(f => f.includes(`messages/${chatId}/`))
+		// );
+		return null;
+	}
+
+	let allMessages: Message[] = [];
+	let chatName = `Chat ${chatId}`;
+
+	// Process each message file
+	for (let i = 0; i < messageFiles.length; i++) {
+		const fileName = messageFiles[i];
+		// console.log(`🔍 Processing file: ${fileName} (${i + 1}/${messageFiles.length})`);
+		
+		onFileProgress?.(i + 1, messageFiles.length);
+		
+		const file = zip.file(fileName);
+		if (!file) {
+			console.warn(`❌ Could not access file: ${fileName}`);
+			continue;
+		}
+
+		try {
+			const buffer = await file.async('arraybuffer');
+			// console.log(`🔍 File ${fileName} size: ${buffer.byteLength} bytes`);
+			
+			const content = decodeWindows1251(buffer);
+			// console.log(`🔍 Decoded content length: ${content.length} chars`);
+			// console.log(`🔍 Content preview (first 200 chars): ${content.substring(0, 200)}`);
+			
+			const messages = parseMessagesFromHtml(content, fileName);
+			// console.log(`🔍 Extracted ${messages.length} messages from ${fileName}`);
+			
+			// Extract chat name from the first file
+			if (allMessages.length === 0 && messages.length > 0) {
+				const extractedName = extractChatName(content);
+				// console.log(`🔍 Extracted chat name: ${extractedName}`);
+				chatName = extractedName || chatName;
+			}
+
+			allMessages.push(...messages);
+		} catch (error) {
+			console.warn(`❌ Failed to parse ${fileName}:`, error);
+		}
+	}
+
+	// console.log(`🔍 Total messages collected for chat ${chatId}: ${allMessages.length}`);
+
+	// Sort messages by timestamp (oldest first)
+	allMessages.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+
+	if (allMessages.length === 0) {
+		console.warn(`❌ No messages parsed for chat ${chatId}`);
+		return null;
+	}
+
+	const analytics = calculateAnalytics(chatId, chatName, allMessages);
+	// console.log(`✅ Analytics calculated for chat ${chatId}:`, {
+	//	totalMessages: analytics.totalMessages,
+	//	dateRange: analytics.dateRange
+	// });
+	
+	return analytics;
+}
+
+function parseMessagesFromHtml(htmlContent: string, fileName: string = 'Unknown'): Message[] {
+	// console.log('🔍 parseMessagesFromHtml called');
+	
+	const parser = new DOMParser();
+	const doc = parser.parseFromString(htmlContent, 'text/html');
+	const messages: Message[] = [];
+
+	const messageElements = doc.querySelectorAll('.message[data-id]');
+	// console.log(`🔍 Found ${messageElements.length} message elements with .message[data-id] selector`);
+
+	// If no elements found, let's try alternative selectors
+	if (messageElements.length === 0) {
+		// console.log('🔍 Trying alternative selectors...');
+		// const altElements1 = doc.querySelectorAll('.message');
+		// console.log(`🔍 Found ${altElements1.length} elements with .message selector`);
+		
+		// const altElements2 = doc.querySelectorAll('[data-id]');
+		// console.log(`🔍 Found ${altElements2.length} elements with [data-id] attribute`);
+		
+		// const bodyText = doc.body?.textContent?.substring(0, 500) || 'No body found';
+		// console.log('🔍 Document body preview:', bodyText);
+	}
+
+	for (const element of messageElements) {
+		try {
+			const id = element.getAttribute('data-id') || '';
+			const headerElement = element.querySelector('.message__header');
+			
+			if (!headerElement) {
+				// console.log(`🔍 No .message__header found for message ${id}`);
+				continue;
+			}
+
+			const headerText = headerElement.textContent || '';
+			// console.log(`🔍 Processing message ${id}, header: ${headerText.substring(0, 100)}`);
+			
+			const isFromUser = headerText.includes('Вы,');
+			
+			// Extract sender name
+			let sender = 'Unknown';
+			if (isFromUser) {
+				sender = 'You';
+			} else {
+				const linkElement = headerElement.querySelector('a');
+				if (linkElement) {
+					sender = linkElement.textContent?.trim() || 'Unknown';
+				}
+			}
+
+			// Extract timestamp
+			const timestamp = parseVkTimestamp(headerText);
+			// console.log(`🔍 Parsed timestamp for message ${id}:`, timestamp);
+			
+			// Extract message content and attachment information separately
+			const contentElements = element.children;
+			let content = '';
+			let hasAttachment = false;
+			let edited = false;
+			let attachmentInfo = '';
+
+			for (const child of contentElements) {
+				if (child.classList.contains('message__header')) continue;
+				
+				// This should be the main content div
+				const contentDiv = child as HTMLElement;
+				
+				// Check for attachments in kludges and extract attachment descriptions
+				const kludgesDiv = contentDiv.querySelector('.kludges');
+				if (kludgesDiv) {
+					hasAttachment = true;
+					// Extract all attachment descriptions
+					const attachmentDescs = kludgesDiv.querySelectorAll('.attachment__description');
+					const attachments = Array.from(attachmentDescs).map(desc => desc.textContent?.trim() || '');
+					attachmentInfo = attachments.join(' ').trim();
+					
+					// Debug logging
+					if (attachmentInfo) {
+						console.log(`Message ${id}: Found ${attachmentDescs.length} attachments: "${attachmentInfo}"`);
+					}
+				}
+				
+				// Extract ONLY the main text content, excluding kludges
+				const clonedDiv = contentDiv.cloneNode(true) as HTMLElement;
+				const kludgesToRemove = clonedDiv.querySelectorAll('.kludges');
+				kludgesToRemove.forEach(k => k.remove());
+				
+				const text = clonedDiv.textContent?.trim() || '';
+				content = text;
+				break;
+			}
+
+
+			// console.log(`🔍 Extracted content for message ${id}: ${content.substring(0, 100)}`);
+
+			// Check if edited
+			const editedElement = element.querySelector('.message-edited');
+			edited = !!editedElement;
+
+			if (timestamp && (content || attachmentInfo)) {
+				messages.push({
+					id,
+					sender,
+					isFromUser,
+					timestamp,
+					content,
+					hasAttachment,
+					attachmentInfo,
+					edited
+				});
+				// console.log(`✅ Successfully parsed message ${id}`);
+			} else {
+				// console.warn(`❌ Skipping message ${id}: timestamp=${timestamp}, content='${content}'`);
+			}
+		} catch (error) {
+			console.warn('❌ Failed to parse message element:', error);
+		}
+	}
+
+	// console.log(`🔍 parseMessagesFromHtml returning ${messages.length} messages`);
+	return messages;
+}
+
+function extractChatName(htmlContent: string): string | null {
+	const parser = new DOMParser();
+	const doc = parser.parseFromString(htmlContent, 'text/html');
+	
+	// Look for chat name in breadcrumbs
+	const crumbs = doc.querySelectorAll('.ui_crumb');
+	if (crumbs.length >= 3) {
+		return crumbs[2].textContent?.trim() || null;
+	}
+	
+	return null;
+}
+
+function parseVkTimestamp(headerText: string): Date | null {
+	// console.log(`🔍 parseVkTimestamp attempting to parse: "${headerText}"`);
+	
+	// Extract date from various formats:
+	// "Наталья Абельдяева, 13 июн 2019 в 13:30:27"
+	// "Вы, 13 июн 2019 в 13:29:17"
+	// "OZON, 24 мая 2025 в 21:20:28"
+	
+	const dateMatch = headerText.match(/(\d{1,2})\s+([а-яё]+)\s+(\d{4})\s+в\s+(\d{1,2}):(\d{2}):(\d{2})/i);
+	if (!dateMatch) {
+		// console.log(`❌ No date match found for: "${headerText}"`);
+		return null;
+	}
+
+	const [, day, monthName, year, hour, minute, second] = dateMatch;
+	// console.log(`🔍 Parsed date parts: day=${day}, month=${monthName}, year=${year}, time=${hour}:${minute}:${second}`);
+	
+	// Russian month names to numbers (including full forms)
+	const months: { [key: string]: number } = {
+		'янв': 0, 'января': 0,
+		'фев': 1, 'февраля': 1,
+		'мар': 2, 'марта': 2,
+		'апр': 3, 'апреля': 3,
+		'май': 4, 'мая': 4,
+		'июн': 5, 'июня': 5,
+		'июл': 6, 'июля': 6,
+		'авг': 7, 'августа': 7,
+		'сен': 8, 'сентября': 8,
+		'окт': 9, 'октября': 9,
+		'ноя': 10, 'ноября': 10,
+		'дек': 11, 'декабря': 11
+	};
+
+	const monthNumber = months[monthName.toLowerCase()];
+	if (monthNumber === undefined) {
+		// console.log(`❌ Unknown month name: "${monthName}"`);
+		return null;
+	}
+
+	try {
+		const date = new Date(
+			parseInt(year),
+			monthNumber,
+			parseInt(day),
+			parseInt(hour),
+			parseInt(minute),
+			parseInt(second)
+		);
+		// console.log(`✅ Successfully parsed date: ${date.toISOString()}`);
+		return date;
+	} catch (error) {
+		// console.log(`❌ Error creating date:`, error);
+		return null;
+	}
+}
+
+function calculateAnalytics(chatId: string, chatName: string, messages: Message[]): ChatAnalytics {
+	const userMessages = messages.filter(m => m.isFromUser).length;
+	const otherMessages = messages.length - userMessages;
+	
+	// Calculate date range efficiently without spread operator for large arrays
+	let minTimestamp = messages[0].timestamp.getTime();
+	let maxTimestamp = messages[0].timestamp.getTime();
+	
+	for (const message of messages) {
+		const time = message.timestamp.getTime();
+		if (time < minTimestamp) minTimestamp = time;
+		if (time > maxTimestamp) maxTimestamp = time;
+	}
+	
+	const start = new Date(minTimestamp);
+	const end = new Date(maxTimestamp);
+
+	// Initialize message type counters
+	const messageTypes: MessageTypeStats = {
+		photos: 0,
+		stickers: 0,
+		forwardedMessages: 0,
+		wallPosts: 0,
+		voiceMessages: 0,
+		documents: 0,
+		textMessages: 0
+	};
+
+	// VK system terms to filter out from word frequency
+	const vkSystemTerms = new Set([
+		'сообщение', 'прикреплённое', 'фотография', 'стикер', 'запись',
+		'стене', 'голосовое', 'аудиозапись', 'документ', 'видеозапись',
+		'геолокация', 'карта', 'файл', 'ссылка', 'poll', 'опрос',
+		'переслано', 'пересланное', 'vk', 'com', 'vkontakte', 'id', 'club', 'public',
+		'event', 'topic', 'wall', 'photo', 'video', 'audio', 'doc', 'link', 'note',
+		'market', 'album', 'page', 'group', 'user', 'app', 'widget', 'www',
+		'http', 'https', 'jpg', 'jpeg', 'png', 'gif', 'mp4', 'avi', 'mp3',
+		'size', 'quality', 'type', 'api', 'cdn', 'sun', 'userapi', 'impg', 'male'
+	]);
+
+	// Function to check if a word is likely a URL, ID, or technical term
+	function isNonMeaningfulText(word: string): boolean {
+		// URLs and domains
+		if (/^https?/.test(word) || /\.(com|ru|org|net|io|co|uk)/.test(word)) {
+			return true;
+		}
+		
+		// VK user/group IDs (like "id157793137not_salieri")
+		if (/^id\d+/.test(word)) {
+			return true;
+		}
+		
+		// Long technical strings (likely URLs or hashes)
+		if (word.length > 30 && !/[а-яё]/i.test(word)) {
+			return true;
+		}
+		
+		// Mixed alphanumeric strings that look like IDs or tokens
+		if (word.length > 10 && /\d/.test(word) && /[a-z]/i.test(word) && !/[а-яё]/i.test(word)) {
+			return true;
+		}
+		
+		// File extensions and formats
+		if (/\.(jpg|jpeg|png|gif|mp4|avi|mp3|pdf|doc|docx|txt|zip|rar)$/i.test(word)) {
+			return true;
+		}
+		
+		// Pin codes and technical terms
+		if (word === 'pin' || /^pin\d+$/.test(word)) {
+			return true;
+		}
+		
+		return false;
+	}
+
+	// Use the stopwords-ru package for comprehensive Russian stopwords filtering
+	const russianStopwords = new Set(stopwords);
+
+	// Calculate word count, message types, and activity patterns
+	let totalWords = 0;
+	let totalLength = 0;
+	const hourActivity: { [hour: number]: number } = {};
+	const dayActivity: { [day: string]: number } = {};
+	const wordCounts: { [word: string]: number } = {};
+
+	messages.forEach(message => {
+		const content = message.content.toLowerCase();
+		const attachmentInfo = message.attachmentInfo.toLowerCase();
+		
+		// Detect message type based on attachment info (priority) or content
+		// Debug: log attachment info for debugging
+		if (attachmentInfo) {
+			console.log(`Debug: attachmentInfo = "${attachmentInfo}"`);
+		}
+		
+		if (attachmentInfo.includes('фотография') || attachmentInfo.includes('изображение')) {
+			messageTypes.photos++;
+			console.log('Detected photo');
+		} else if (attachmentInfo.includes('стикер')) {
+			messageTypes.stickers++;
+			console.log('Detected sticker');
+		} else if (attachmentInfo.includes('прикреплённое сообщение') || attachmentInfo.includes('переслано')) {
+			messageTypes.forwardedMessages++;
+			console.log('Detected forwarded message');
+		} else if (attachmentInfo.includes('запись') && attachmentInfo.includes('стене')) {
+			messageTypes.wallPosts++;
+			console.log('Detected wall post');
+		} else if (attachmentInfo.includes('голосовое сообщение') || attachmentInfo.includes('аудиозапись')) {
+			messageTypes.voiceMessages++;
+			console.log('Detected voice message');
+		} else if (attachmentInfo.includes('документ') || attachmentInfo.includes('файл')) {
+			messageTypes.documents++;
+			console.log('Detected document');
+		} else {
+			messageTypes.textMessages++;
+			if (attachmentInfo) {
+				console.log(`Unmatched attachment: "${attachmentInfo}"`);
+			}
+		}
+
+		// Calculate basic metrics - use case-insensitive counting
+		const words = message.content.toLowerCase().split(/\s+/).filter(word => word.length > 0);
+		totalWords += words.length;
+		totalLength += message.content.length;
+
+		// Activity patterns
+		const hour = message.timestamp.getHours();
+		const day = message.timestamp.toLocaleDateString('ru-RU', { weekday: 'long' });
+		
+		hourActivity[hour] = (hourActivity[hour] || 0) + 1;
+		dayActivity[day] = (dayActivity[day] || 0) + 1;
+
+		// Word frequency analysis for all messages (not just text messages)
+		// Only exclude pure system messages
+		const isSystemOnlyMessage = content.includes('фотография') || content.includes('стикер') ||
+			content.includes('голосовое сообщение') || content.includes('документ') || content.includes('файл') ||
+			(content.includes('прикреплённое сообщение') && !content.match(/[а-яё]/gi)) ||
+			content.includes('переслано');
+
+		if (!isSystemOnlyMessage) {
+			const cleanWords = content
+				.replace(/[^\u0400-\u04FF\w\s]/g, '') // Keep only Cyrillic and Latin letters
+				.split(/\s+/)
+				.filter(word =>
+					word.length > 2 &&
+					!vkSystemTerms.has(word) &&
+					!russianStopwords.has(word) &&
+					!/^\d+$/.test(word) && // Filter out pure numbers
+					!isNonMeaningfulText(word) // Filter out URLs, IDs, etc.
+				);
+
+			cleanWords.forEach(word => {
+				wordCounts[word] = (wordCounts[word] || 0) + 1;
+			});
+		}
+	});
+
+	const topWords = Object.entries(wordCounts)
+		.sort(([,a], [,b]) => b - a)
+		.slice(0, 20)
+		.map(([word, count]) => ({ word, count }));
+
+	// Calculate per-user statistics
+	const userStatsMap: { [sender: string]: UserStats } = {};
+	
+	messages.forEach(message => {
+		const sender = message.sender;
+		if (!userStatsMap[sender]) {
+			userStatsMap[sender] = {
+				sender,
+				totalMessages: 0,
+				wordCount: 0,
+				averageMessageLength: 0,
+				messageTypes: {
+					photos: 0,
+					stickers: 0,
+					forwardedMessages: 0,
+					wallPosts: 0,
+					voiceMessages: 0,
+					documents: 0,
+					textMessages: 0
+				},
+				mostActiveHours: {},
+				mostActiveDays: {},
+				topWords: []
+			};
+		}
+
+		const userStats = userStatsMap[sender];
+		const content = message.content.toLowerCase();
+		const attachmentInfo = message.attachmentInfo.toLowerCase();
+		
+		// Basic stats - use case-insensitive counting
+		userStats.totalMessages++;
+		const words = message.content.toLowerCase().split(/\s+/).filter(word => word.length > 0);
+		userStats.wordCount += words.length;
+
+		// Message type detection based on attachment info (priority) or content
+		if (attachmentInfo.includes('фотография') || attachmentInfo.includes('изображение')) {
+			userStats.messageTypes.photos++;
+		} else if (attachmentInfo.includes('стикер')) {
+			userStats.messageTypes.stickers++;
+		} else if (attachmentInfo.includes('прикреплённое сообщение') || attachmentInfo.includes('переслано')) {
+			userStats.messageTypes.forwardedMessages++;
+		} else if (attachmentInfo.includes('запись') && attachmentInfo.includes('стене')) {
+			userStats.messageTypes.wallPosts++;
+		} else if (attachmentInfo.includes('голосовое сообщение') || attachmentInfo.includes('аудиозапись')) {
+			userStats.messageTypes.voiceMessages++;
+		} else if (attachmentInfo.includes('документ') || attachmentInfo.includes('файл')) {
+			userStats.messageTypes.documents++;
+		} else {
+			userStats.messageTypes.textMessages++;
+		}
+
+		// Activity patterns
+		const hour = message.timestamp.getHours();
+		const day = message.timestamp.toLocaleDateString('ru-RU', { weekday: 'long' });
+		
+		userStats.mostActiveHours[hour] = (userStats.mostActiveHours[hour] || 0) + 1;
+		userStats.mostActiveDays[day] = (userStats.mostActiveDays[day] || 0) + 1;
+	});
+
+	// Calculate averages and top words for each user
+	const userStats: UserStats[] = Object.values(userStatsMap).map(user => {
+		user.averageMessageLength = user.wordCount > 0 ?
+			messages.filter(m => m.sender === user.sender)
+				.reduce((sum, m) => sum + m.content.length, 0) / user.totalMessages : 0;
+
+		// Calculate user's top words (simplified for performance)
+		const userMessages = messages.filter(m => m.sender === user.sender);
+		const userWordCounts: { [word: string]: number } = {};
+		
+		// Analyze all messages for accurate word counts
+		const sampleMessages = userMessages;
+
+		sampleMessages.forEach(message => {
+			const cleanWords = message.content.toLowerCase()
+				.replace(/[^\u0400-\u04FF\w\s]/g, '')
+				.split(/\s+/)
+				.filter(word =>
+					word.length > 2 &&
+					!vkSystemTerms.has(word) &&
+					!russianStopwords.has(word) &&
+					!/^\d+$/.test(word) &&
+					!isNonMeaningfulText(word) // Filter out URLs, IDs, etc.
+				);
+
+			cleanWords.forEach(word => {
+				userWordCounts[word] = (userWordCounts[word] || 0) + 1;
+			});
+		});
+
+		user.topWords = Object.entries(userWordCounts)
+			.sort(([,a], [,b]) => b - a)
+			.slice(0, 10)
+			.map(([word, count]) => ({ word, count }));
+
+		return user;
+	});
+
+	// Sort users by message count
+	userStats.sort((a, b) => b.totalMessages - a.totalMessages);
+
+	return {
+		chatId,
+		chatName,
+		totalMessages: messages.length,
+		userMessages,
+		otherMessages,
+		messages,
+		dateRange: { start, end },
+		wordCount: totalWords,
+		averageMessageLength: totalLength / messages.length,
+		mostActiveHours: hourActivity,
+		mostActiveDays: dayActivity,
+		topWords,
+		messageTypes,
+		userStats
+	};
+}
