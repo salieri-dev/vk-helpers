@@ -9,6 +9,10 @@
 	import TimelineChart from '$lib/components/TimelineChart.svelte';
 	import ActivityHeatmap from '$lib/components/ActivityHeatmap.svelte';
 	import AnalyticsControls from '$lib/components/AnalyticsControls.svelte';
+	import ConversationBalance from '$lib/components/ConversationBalance.svelte';
+	import ResponseTimeStats from '$lib/components/ResponseTimeStats.svelte';
+	import RelationshipTimeline from '$lib/components/RelationshipTimeline.svelte';
+	import ContactsNetworkGraph from '$lib/components/ContactsNetworkGraph.svelte';
 	import { AnalyticsExporter } from '$lib/utils/exportUtils';
 	import stopwords from 'stopwords-ru';
 
@@ -825,6 +829,52 @@
 			<TimelineChart {analytics} />
 		</section>
 
+		<!-- Advanced Analytics -->
+		<section class="advanced-analytics">
+			<h2>Advanced Analytics</h2>
+			
+			<!-- Contacts Network Graph -->
+			<ContactsNetworkGraph {analytics} maxContacts={10} />
+			
+			<!-- Conversation Balance for each chat -->
+			{#each analytics as chat}
+				{#if chat.userMessages > 0 && chat.otherMessages > 0}
+					<ConversationBalance
+						balance={chat.conversationBalance}
+						otherUserName={chat.chatName}
+					/>
+				{/if}
+			{/each}
+
+			<!-- Global Response Time Stats -->
+			{#if analytics.length > 0 && analytics[0].globalResponseTimeStats.totalResponses > 0}
+				<ResponseTimeStats
+					stats={analytics[0].globalResponseTimeStats}
+					userName="Global"
+				/>
+			{/if}
+
+			<!-- Individual Response Time Stats for top users -->
+			{#each allUserStats.slice(0, 3) as user}
+				{#if user.responseTimeStats && user.responseTimeStats.totalResponses > 5}
+					<ResponseTimeStats
+						stats={user.responseTimeStats}
+						userName={user.sender}
+					/>
+				{/if}
+			{/each}
+
+			<!-- Relationship Timeline for each chat -->
+			{#each analytics as chat}
+				{#if chat.relationshipTimeline.length > 1}
+					<RelationshipTimeline
+						timeline={chat.relationshipTimeline}
+						chatName={chat.chatName}
+					/>
+				{/if}
+			{/each}
+		</section>
+
 		<!-- Word Analysis -->
 		<section class="words-section">
 			<h2>Word Analysis</h2>
@@ -1248,8 +1298,17 @@
 		padding: 2rem;
 	}
 
-	.activity-analysis, .timeline-section, .words-section {
+	.activity-analysis, .timeline-section, .advanced-analytics, .words-section {
 		margin-bottom: 3rem;
+	}
+
+	.advanced-analytics h2 {
+		color: #333;
+		margin-bottom: 2rem;
+		text-align: center;
+		font-size: 1.5rem;
+		border-bottom: 2px solid #4a90e2;
+		padding-bottom: 0.5rem;
 	}
 
 	.charts-grid {

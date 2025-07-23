@@ -23,6 +23,21 @@ export interface MessageTypeStats {
 	textMessages: number;
 }
 
+export interface ResponseTimeStats {
+	averageResponseTime: number; // in minutes
+	medianResponseTime: number; // in minutes
+	totalResponses: number;
+	responseTimes: number[]; // array of response times in minutes
+}
+
+export interface ConversationBalance {
+	messageRatio: number; // user messages / other user messages
+	wordRatio: number; // user words / other user words
+	initiationRatio: number; // user initiations / other user initiations
+	conversationStarts: number; // number of conversations user started
+	totalConversations: number; // total conversation segments identified
+}
+
 export interface UserStats {
 	sender: string;
 	totalMessages: number;
@@ -33,6 +48,16 @@ export interface UserStats {
 	mostActiveDays: { [day: string]: number };
 	topWords: { word: string; count: number }[];
 	userWordCounts?: { [word: string]: number };
+	// New advanced analytics
+	responseTimeStats?: ResponseTimeStats;
+	conversationBalance?: ConversationBalance;
+}
+
+export interface RelationshipTimeline {
+	month: string; // YYYY-MM format
+	userMessages: number;
+	otherMessages: number;
+	totalMessages: number;
 }
 
 export interface ChatAnalytics {
@@ -53,6 +78,10 @@ export interface ChatAnalytics {
 	topWords: { word: string; count: number }[];
 	messageTypes: MessageTypeStats;
 	userStats: UserStats[];
+	// New advanced analytics
+	relationshipTimeline: RelationshipTimeline[];
+	conversationBalance: ConversationBalance;
+	globalResponseTimeStats: ResponseTimeStats;
 }
 
 export async function parseMessagesForChats(
@@ -393,6 +422,124 @@ function parseVkTimestamp(headerText: string): Date | null {
 	}
 }
 
+function calculateResponseTimes(messages: Message[], currentUserId: string): ResponseTimeStats {
+	const responseTimes: number[] = [];
+	
+	for (let i = 1; i < messages.length; i++) {
+		const currentMessage = messages[i];
+		const previousMessage = messages[i - 1];
+		
+		// Only count as a response if users are different
+		if (currentMessage.sender !== previousMessage.sender) {
+			const timeDiff = currentMessage.timestamp.getTime() - previousMessage.timestamp.getTime();
+			const minutesDiff = timeDiff / (1000 * 60); // Convert to minutes
+			
+			// Only count reasonable response times (within 24 hours)
+			if (minutesDiff > 0 && minutesDiff <= 1440) {
+				responseTimes.push(minutesDiff);
+			}
+		}
+	}
+	
+	if (responseTimes.length === 0) {
+		return {
+			averageResponseTime: 0,
+			medianResponseTime: 0,
+			totalResponses: 0,
+			responseTimes: []
+		};
+	}
+	
+	const sortedTimes = [...responseTimes].sort((a, b) => a - b);
+	const average = responseTimes.reduce((sum, time) => sum + time, 0) / responseTimes.length;
+	const median = sortedTimes.length % 2 === 0
+		? (sortedTimes[sortedTimes.length / 2 - 1] + sortedTimes[sortedTimes.length / 2]) / 2
+		: sortedTimes[Math.floor(sortedTimes.length / 2)];
+	
+	return {
+		averageResponseTime: average,
+		medianResponseTime: median,
+		totalResponses: responseTimes.length,
+		responseTimes: responseTimes
+	};
+}
+
+function calculateConversationBalance(messages: Message[]): ConversationBalance {
+	const userMessages = messages.filter(m => m.isFromUser);
+	const otherMessages = messages.filter(m => !m.isFromUser);
+	
+	// Calculate word counts
+	const userWords = userMessages.reduce((sum, msg) => sum + msg.content.split(/\s+/).filter(w => w.length > 0).length, 0);
+	const otherWords = otherMessages.reduce((sum, msg) => sum + msg.content.split(/\s+/).filter(w => w.length > 0).length, 0);
+	
+	// Calculate conversation initiations (after 12+ hour gaps)
+	const CONVERSATION_GAP = 12 * 60 * 60 * 1000; // 12 hours in milliseconds
+	let userInitiations = 0;
+	let otherInitiations = 0;
+	let totalConversations = 0;
+	
+	if (messages.length > 0) {
+		// First message is always an initiation
+		if (messages[0].isFromUser) {
+			userInitiations++;
+		} else {
+			otherInitiations++;
+		}
+		totalConversations = 1;
+		
+		for (let i = 1; i < messages.length; i++) {
+			const currentMessage = messages[i];
+			const previousMessage = messages[i - 1];
+			const timeDiff = currentMessage.timestamp.getTime() - previousMessage.timestamp.getTime();
+			
+			// If there's a gap of 12+ hours, consider this a new conversation
+			if (timeDiff >= CONVERSATION_GAP) {
+				totalConversations++;
+				if (currentMessage.isFromUser) {
+					userInitiations++;
+				} else {
+					otherInitiations++;
+				}
+			}
+		}
+	}
+	
+	return {
+		messageRatio: otherMessages.length > 0 ? userMessages.length / otherMessages.length : userMessages.length,
+		wordRatio: otherWords > 0 ? userWords / otherWords : userWords,
+		initiationRatio: otherInitiations > 0 ? userInitiations / otherInitiations : userInitiations,
+		conversationStarts: userInitiations,
+		totalConversations: totalConversations
+	};
+}
+
+function calculateRelationshipTimeline(messages: Message[]): RelationshipTimeline[] {
+	const monthlyData: { [month: string]: { userMessages: number; otherMessages: number; } } = {};
+	
+	for (const message of messages) {
+		const monthKey = `${message.timestamp.getFullYear()}-${String(message.timestamp.getMonth() + 1).padStart(2, '0')}`;
+		
+		if (!monthlyData[monthKey]) {
+			monthlyData[monthKey] = { userMessages: 0, otherMessages: 0 };
+		}
+		
+		if (message.isFromUser) {
+			monthlyData[monthKey].userMessages++;
+		} else {
+			monthlyData[monthKey].otherMessages++;
+		}
+	}
+	
+	return Object.entries(monthlyData)
+		.map(([month, data]) => ({
+			month,
+			userMessages: data.userMessages,
+			otherMessages: data.otherMessages,
+			totalMessages: data.userMessages + data.otherMessages
+		}))
+		.sort((a, b) => a.month.localeCompare(b.month));
+}
+
 function calculateAnalytics(chatId: string, chatName: string, messages: Message[]): ChatAnalytics {
 	const userMessages = messages.filter(m => m.isFromUser).length;
 	const otherMessages = messages.length - userMessages;
@@ -656,6 +803,20 @@ function calculateAnalytics(chatId: string, chatName: string, messages: Message[
 	// Sort users by message count
 	userStats.sort((a, b) => b.totalMessages - a.totalMessages);
 
+	// Calculate new advanced analytics
+	const conversationBalance = calculateConversationBalance(messages);
+	const globalResponseTimeStats = calculateResponseTimes(messages, 'You');
+	const relationshipTimeline = calculateRelationshipTimeline(messages);
+
+	// Calculate response times for each user
+	userStats.forEach(user => {
+		const userMessages = messages.filter(m => m.sender === user.sender);
+		if (userMessages.length > 1) {
+			user.responseTimeStats = calculateResponseTimes(messages, user.sender);
+			user.conversationBalance = calculateConversationBalance(userMessages);
+		}
+	});
+
 	return {
 		chatId,
 		chatName,
@@ -670,6 +831,10 @@ function calculateAnalytics(chatId: string, chatName: string, messages: Message[
 		mostActiveDays: dayActivity,
 		topWords,
 		messageTypes,
-		userStats
+		userStats,
+		// New advanced analytics
+		relationshipTimeline,
+		conversationBalance,
+		globalResponseTimeStats
 	};
 }

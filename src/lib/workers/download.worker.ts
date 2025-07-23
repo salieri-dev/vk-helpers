@@ -92,7 +92,8 @@ class ImageDownloader {
 			concurrentDownloads = 3,
 			batchSize = 10,
 			retryAttempts = 2,
-			addExifMetadata = false
+			addExifMetadata = false,
+			createSubdirectories = true
 		} = options;
 
 		try {
@@ -134,14 +135,16 @@ class ImageDownloader {
 					concurrentDownloads,
 					batchSize,
 					retryAttempts,
-					addExifMetadata
+					addExifMetadata,
+					createSubdirectories
 				});
 			} else {
 				await this.downloadWithZipFallback(photos, {
 					concurrentDownloads,
 					batchSize,
 					retryAttempts,
-					addExifMetadata
+					addExifMetadata,
+					createSubdirectories
 				});
 			}
 
@@ -180,19 +183,21 @@ class ImageDownloader {
 	}
 
 	private async downloadWithFileSystemAPI(
-		photos: PhotoRecord[], 
+		photos: PhotoRecord[],
 		rootHandle: FileSystemDirectoryHandle,
 		options: {
 			concurrentDownloads: number;
 			batchSize: number;
 			retryAttempts: number;
 			addExifMetadata: boolean;
+			createSubdirectories: boolean;
 		}
 	): Promise<void> {
-		const { concurrentDownloads, batchSize, retryAttempts } = options;
+		const { concurrentDownloads, batchSize, retryAttempts, createSubdirectories } = options;
 
-		// Create folder structure
+		// Create folder structure and track filenames for flat structure
 		const folderCache = new Map<string, FileSystemDirectoryHandle>();
+		const usedFilenames = new Set<string>();
 
 		// Process photos in batches
 		for (let i = 0; i < photos.length; i += batchSize) {
@@ -207,7 +212,7 @@ class ImageDownloader {
 				semaphore[slotIndex] = photo;
 
 				try {
-					await this.downloadAndWritePhoto(photo, rootHandle, folderCache, retryAttempts);
+					await this.downloadAndWritePhoto(photo, rootHandle, folderCache, retryAttempts, createSubdirectories, usedFilenames);
 					this.downloadedImages++;
 					
 					// Update photo record
@@ -238,7 +243,9 @@ class ImageDownloader {
 		photo: PhotoRecord,
 		rootHandle: FileSystemDirectoryHandle,
 		folderCache: Map<string, FileSystemDirectoryHandle>,
-		retryAttempts: number
+		retryAttempts: number,
+		createSubdirectories: boolean = true,
+		usedFilenames?: Set<string>
 	): Promise<void> {
 		// Download the image
 		const blob = await this.downloadImageWithRetry(photo.url, retryAttempts);
@@ -246,26 +253,42 @@ class ImageDownloader {
 			throw new Error(`Failed to download ${photo.url}`);
 		}
 
-		// Create folder structure
-		const folderPath = this.getFolderPath(photo);
-		const folderHandle = await this.ensureFolderExists(rootHandle, folderPath, folderCache);
+		// Determine file path and filename
+		let folderHandle: FileSystemDirectoryHandle;
+		let finalFilename = photo.filename;
+		let localPath = '';
+
+		if (createSubdirectories) {
+			// Create folder structure
+			const folderPath = this.getFolderPath(photo);
+			folderHandle = await this.ensureFolderExists(rootHandle, folderPath, folderCache);
+			localPath = `${folderPath}/${finalFilename}`;
+		} else {
+			// Flat structure - save all files to root directory
+			folderHandle = rootHandle;
+			
+			// Generate unique filename if needed
+			if (usedFilenames) {
+				finalFilename = this.generateUniqueFilename(photo.filename, usedFilenames);
+			}
+			localPath = finalFilename;
+		}
 
 		// Create file and write
-		const fileHandle = await folderHandle.getFileHandle(photo.filename, { create: true });
+		const fileHandle = await folderHandle.getFileHandle(finalFilename, { create: true });
 		const writable = await fileHandle.createWritable();
 		
 		await writable.write(blob);
 		await writable.close();
 
 		// Update photo record with local path
-		const localPath = `${folderPath}/${photo.filename}`;
 		await databaseService.updatePhoto({
 			id: photo.id,
 			localPath
 		});
 
 		this.postFileWritten({
-			filename: photo.filename,
+			filename: finalFilename,
 			path: localPath,
 			size: blob.size
 		});
@@ -278,20 +301,22 @@ class ImageDownloader {
 			batchSize: number;
 			retryAttempts: number;
 			addExifMetadata: boolean;
+			createSubdirectories: boolean;
 		}
 	): Promise<void> {
 		// Import JSZip dynamically to avoid loading it unless needed
 		const JSZip = (await import('jszip')).default;
 		const zip = new JSZip();
 
-		const { concurrentDownloads, batchSize, retryAttempts } = options;
+		const { concurrentDownloads, batchSize, retryAttempts, createSubdirectories } = options;
+		const usedFilenames = new Set<string>(); // Track used filenames for flat structure
 
 		// Process photos in batches
 		for (let i = 0; i < photos.length; i += batchSize) {
 			const batch = photos.slice(i, i + batchSize);
 			
 			// Download batch concurrently
-			const downloadPromises = batch.map(photo => 
+			const downloadPromises = batch.map(photo =>
 				this.downloadImageWithRetry(photo.url, retryAttempts)
 			);
 
@@ -303,8 +328,18 @@ class ImageDownloader {
 				const photo = batch[j];
 				
 				if (blob) {
-					const folderPath = this.getFolderPath(photo);
-					zip.file(`${folderPath}/${photo.filename}`, blob);
+					let zipPath: string;
+					let finalFilename = photo.filename;
+					
+					if (createSubdirectories) {
+						const folderPath = this.getFolderPath(photo);
+						zipPath = `${folderPath}/${finalFilename}`;
+					} else {
+						finalFilename = this.generateUniqueFilename(photo.filename, usedFilenames);
+						zipPath = finalFilename;
+					}
+					
+					zip.file(zipPath, blob);
 					this.downloadedImages++;
 					
 					await databaseService.updatePhoto({
@@ -439,6 +474,23 @@ class ImageDownloader {
 			.replace(/\s+/g, ' ')
 			.trim()
 			.substring(0, 100);
+	}
+
+	private generateUniqueFilename(filename: string, existingNames: Set<string>): string {
+		const baseName = filename;
+		const extension = baseName.substring(baseName.lastIndexOf('.'));
+		const nameWithoutExt = baseName.substring(0, baseName.lastIndexOf('.'));
+		
+		let uniqueName = baseName;
+		let counter = 1;
+		
+		while (existingNames.has(uniqueName)) {
+			uniqueName = `${nameWithoutExt}_${counter}${extension}`;
+			counter++;
+		}
+		
+		existingNames.add(uniqueName);
+		return uniqueName;
 	}
 
 	private async waitForSlot(semaphore: any[]): Promise<void> {

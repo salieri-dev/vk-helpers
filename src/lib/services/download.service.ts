@@ -29,6 +29,7 @@ export interface DownloadServiceOptions {
 	batchSize?: number;
 	retryAttempts?: number;
 	addExifMetadata?: boolean;
+	createSubdirectories?: boolean;
 	createProgressLog?: boolean;
 }
 
@@ -165,7 +166,8 @@ export class DownloadService {
 			concurrentDownloads: options.concurrentDownloads || 3,
 			batchSize: options.batchSize || 10,
 			retryAttempts: options.retryAttempts || 2,
-			addExifMetadata: options.addExifMetadata || false
+			addExifMetadata: options.addExifMetadata || false,
+			createSubdirectories: options.createSubdirectories !== false // Default to true
 		};
 
 		// Send command to worker
@@ -187,7 +189,8 @@ export class DownloadService {
 				concurrentDownloads: options.concurrentDownloads || 3,
 				batchSize: options.batchSize || 10,
 				retryAttempts: options.retryAttempts || 2,
-				addExifMetadata: options.addExifMetadata || false
+				addExifMetadata: options.addExifMetadata || false,
+				createSubdirectories: options.createSubdirectories !== false // Default to true
 			});
 		}
 
@@ -359,6 +362,7 @@ export class DownloadService {
 			batchSize: number;
 			retryAttempts: number;
 			addExifMetadata: boolean;
+			createSubdirectories: boolean;
 		}
 	): Promise<DownloadResult> {
 		const startTime = Date.now();
@@ -381,6 +385,7 @@ export class DownloadService {
 		let downloadedImages = 0;
 		let failedImages = 0;
 		const failedUrls: string[] = [];
+		const usedFilenames = new Set<string>(); // Track used filenames for flat structure
 
 		// Process photos in batches
 		for (let i = 0; i < photos.length; i += options.batchSize) {
@@ -389,7 +394,7 @@ export class DownloadService {
 			await Promise.allSettled(
 				batch.map(async (photo) => {
 					try {
-						await this.downloadSinglePhoto(photo, directoryHandle, options.retryAttempts, options.addExifMetadata);
+						await this.downloadSinglePhoto(photo, directoryHandle, options.retryAttempts, options.addExifMetadata, options.createSubdirectories, usedFilenames);
 						downloadedImages++;
 						
 						// Update progress
@@ -429,7 +434,9 @@ export class DownloadService {
 		photo: PhotoRecord,
 		rootHandle: FileSystemDirectoryHandle,
 		retryAttempts: number,
-		addExifMetadata: boolean
+		addExifMetadata: boolean,
+		createSubdirectories: boolean = true,
+		usedFilenames?: Set<string>
 	): Promise<void> {
 		let attempt = 0;
 		let lastError: Error | null = null;
@@ -468,19 +475,35 @@ export class DownloadService {
 					}
 				}
 
-				// Create file path (use chat folder if available)
-				const folderName = photo.chatId || 'images';
+				// Determine file path and filename
 				let folderHandle: FileSystemDirectoryHandle;
-				
-				try {
-					folderHandle = await rootHandle.getDirectoryHandle(folderName, { create: true });
-				} catch (error) {
-					// If folder creation fails, save to root
+				let finalFilename = photo.filename;
+				let localPath = '';
+
+				if (createSubdirectories) {
+					// Create subdirectory structure (use chat folder if available)
+					const folderName = photo.chatId || 'images';
+					try {
+						folderHandle = await rootHandle.getDirectoryHandle(folderName, { create: true });
+						localPath = `${folderName}/${finalFilename}`;
+					} catch (error) {
+						// If folder creation fails, save to root
+						folderHandle = rootHandle;
+						localPath = finalFilename;
+					}
+				} else {
+					// Flat structure - save all files to root directory
 					folderHandle = rootHandle;
+					
+					// Generate unique filename if needed
+					if (usedFilenames) {
+						finalFilename = this.generateUniqueFilename(photo.filename, usedFilenames);
+					}
+					localPath = finalFilename;
 				}
 
 				// Create and write file
-				const fileHandle = await folderHandle.getFileHandle(photo.filename, { create: true });
+				const fileHandle = await folderHandle.getFileHandle(finalFilename, { create: true });
 				const writable = await fileHandle.createWritable();
 				
 				await writable.write(blob);
@@ -490,7 +513,7 @@ export class DownloadService {
 				await databaseService.updatePhoto({
 					id: photo.id,
 					downloadStatus: 'downloaded',
-					localPath: `${folderName}/${photo.filename}`
+					localPath: localPath
 				});
 
 				return; // Success!
@@ -546,8 +569,28 @@ export class DownloadService {
 	}
 
 	/**
-	 * Cleanup resources
-	 */
+		* Generate a unique filename when not using subdirectories
+		*/
+	private generateUniqueFilename(filename: string, existingNames: Set<string>): string {
+		const baseName = filename;
+		const extension = baseName.substring(baseName.lastIndexOf('.'));
+		const nameWithoutExt = baseName.substring(0, baseName.lastIndexOf('.'));
+		
+		let uniqueName = baseName;
+		let counter = 1;
+		
+		while (existingNames.has(uniqueName)) {
+			uniqueName = `${nameWithoutExt}_${counter}${extension}`;
+			counter++;
+		}
+		
+		existingNames.add(uniqueName);
+		return uniqueName;
+	}
+
+	/**
+		* Cleanup resources
+		*/
 	destroy(): void {
 		if (this.worker) {
 			this.worker.terminate();

@@ -35,7 +35,8 @@
 		batchSize: 10,
 		concurrentDownloads: 3,
 		retryAttempts: 2,
-		addExifMetadata: true
+		addExifMetadata: true,
+		createSubdirectories: true
 	};
 
 	// File System Access API detection
@@ -73,12 +74,12 @@
 						// Update downloadProgress for consistent UI display
 						if (currentProgress) {
 							// Debug log to see what we're receiving
-							console.log('UI Progress Update:', {
-								received: currentProgress,
-								processed: currentProgress.processed,
-								total: currentProgress.total,
-								percentage: currentProgress.percentage
-							});
+							// console.log('UI Progress Update:', {
+							// 	received: currentProgress,
+							// 	processed: currentProgress.processed,
+							// 	total: currentProgress.total,
+							// 	percentage: currentProgress.percentage
+							// });
 							
 							downloadProgress = {
 								currentStep: currentProgress.step || 'Downloading...',
@@ -256,6 +257,7 @@
 						batchSize: downloadConfig.batchSize,
 						retryAttempts: downloadConfig.retryAttempts,
 						addExifMetadata: downloadConfig.addExifMetadata,
+						createSubdirectories: downloadConfig.createSubdirectories,
 						createProgressLog: true
 					}
 				};
@@ -280,6 +282,7 @@
 					concurrentDownloads: downloadConfig.concurrentDownloads,
 					retryAttempts: downloadConfig.retryAttempts,
 					addExifMetadata: downloadConfig.addExifMetadata,
+					createSubdirectories: downloadConfig.createSubdirectories,
 					onProgress: (progress) => {
 						downloadProgress = progress;
 					}
@@ -487,6 +490,18 @@
 						<small class="config-description">Include timestamp and source information in image files</small>
 					</label>
 				</div>
+
+				<div class="config-group checkbox-group">
+					<label for="createSubdirectories" class="checkbox-label">
+						<input
+							type="checkbox"
+							id="createSubdirectories"
+							bind:checked={downloadConfig.createSubdirectories}
+						/>
+						<span class="config-label">Create Subdirectories</span>
+						<small class="config-description">Organize images into folders by chat and date (when disabled, all images go into a single folder)</small>
+					</label>
+				</div>
 			</div>
 
 			<div class="config-summary">
@@ -496,6 +511,7 @@
 					<li>Up to <strong>{downloadConfig.concurrentDownloads} simultaneous</strong> downloads</li>
 					<li>Will retry failed downloads <strong>{downloadConfig.retryAttempts} time{downloadConfig.retryAttempts !== 1 ? 's' : ''}</strong></li>
 					<li>{downloadConfig.addExifMetadata ? 'Will add' : 'Will not add'} <strong>EXIF metadata</strong></li>
+					<li>{downloadConfig.createSubdirectories ? 'Will organize' : 'Will not organize'} images <strong>into subdirectories</strong></li>
 				</ul>
 			</div>
 

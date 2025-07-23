@@ -25,6 +25,7 @@ export interface DownloadOptions {
 	batchSize?: number;
 	retryAttempts?: number;
 	addExifMetadata?: boolean;
+	createSubdirectories?: boolean;
 	onProgress?: (progress: DownloadProgress) => void;
 }
 
@@ -43,6 +44,7 @@ export async function downloadImagesAsZip(
 		batchSize = 10,
 		retryAttempts = 2,
 		addExifMetadata = true,
+		createSubdirectories = true,
 		onProgress
 	} = options;
 
@@ -53,8 +55,8 @@ export async function downloadImagesAsZip(
 	const zip = new JSZip();
 	const startTime = Date.now();
 
-	// Create folder structure
-	const folderStructure = createFolderStructure(images);
+	// Create folder structure (if enabled)
+	const folderStructure = createSubdirectories ? createFolderStructure(images) : null;
 	
 	onProgress?.({
 		currentImage: 'Initializing...',
@@ -65,12 +67,15 @@ export async function downloadImagesAsZip(
 		percentage: 0
 	});
 
+	// Track used filenames for unique naming when not using subdirectories
+	const usedFilenames = new Set<string>();
+
 	// Process images in batches to manage memory
 	for (let i = 0; i < images.length; i += batchSize) {
 		const batch = images.slice(i, i + batchSize);
 		
 		// Download batch concurrently
-		const downloadPromises = batch.map(image => 
+		const downloadPromises = batch.map(image =>
 			downloadImageWithRetry(image, retryAttempts)
 		);
 
@@ -79,7 +84,7 @@ export async function downloadImagesAsZip(
 			downloadPromises,
 			concurrentDownloads
 		);
-
+		
 		// Add successful downloads to ZIP
 		for (let j = 0; j < batchResults.length; j++) {
 			const result = batchResults[j];
@@ -98,14 +103,25 @@ export async function downloadImagesAsZip(
 					}
 				}
 				
+				// Determine final filename and path
+				let finalFilename = image.filename;
+				let zipPath: string;
+				
+				if (createSubdirectories) {
+					const folderPath = getFolderPath(image, folderStructure!);
+					zipPath = `${folderPath}/${finalFilename}`;
+				} else {
+					finalFilename = generateUniqueFilename(image, usedFilenames);
+					zipPath = finalFilename;
+				}
+				
 				// Create new File with correct timestamp for filesystem dates
-				const fileWithTimestamp = new File([finalBlob], image.filename, {
+				const fileWithTimestamp = new File([finalBlob], finalFilename, {
 					type: finalBlob.type,
 					lastModified: image.timestamp.getTime() // Set file modification date to VK message timestamp
 				});
 				
-				const folderPath = getFolderPath(image, folderStructure);
-				zip.file(`${folderPath}/${image.filename}`, fileWithTimestamp);
+				zip.file(zipPath, fileWithTimestamp);
 				downloadedImages++;
 			} else {
 				failedImages++;
@@ -252,6 +268,26 @@ function getFolderPath(image: ImageInfo, structure: Map<string, string[]>): stri
 	const monthFolder = `${year}-${month}`;
 	
 	return `${chatFolder}/${monthFolder}`;
+}
+
+/**
+ * Generate a unique filename when not using subdirectories
+ */
+function generateUniqueFilename(image: ImageInfo, existingNames: Set<string>): string {
+	const baseName = image.filename;
+	const extension = baseName.substring(baseName.lastIndexOf('.'));
+	const nameWithoutExt = baseName.substring(0, baseName.lastIndexOf('.'));
+	
+	let uniqueName = baseName;
+	let counter = 1;
+	
+	while (existingNames.has(uniqueName)) {
+		uniqueName = `${nameWithoutExt}_${counter}${extension}`;
+		counter++;
+	}
+	
+	existingNames.add(uniqueName);
+	return uniqueName;
 }
 
 /**

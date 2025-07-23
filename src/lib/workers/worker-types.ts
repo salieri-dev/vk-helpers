@@ -61,6 +61,7 @@ export interface DownloadOptions {
 	batchSize?: number;
 	retryAttempts?: number;
 	addExifMetadata?: boolean;
+	createSubdirectories?: boolean;
 }
 
 export interface DownloadCompletionData {
