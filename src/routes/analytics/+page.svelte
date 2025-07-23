@@ -4,16 +4,12 @@
 	import { goto } from '$app/navigation';
 	import { archiveStore } from '$lib/stores/archive';
 	import { parseMessagesForChats, type ChatAnalytics } from '$lib/utils/messageParser';
-	import { analyticsConfig, CACHE_LIMITS } from '$lib/stores/analyticsConfig';
 	import StatsCard from '$lib/components/StatsCard.svelte';
 	import TimelineChart from '$lib/components/TimelineChart.svelte';
 	import ActivityHeatmap from '$lib/components/ActivityHeatmap.svelte';
-	import AnalyticsControls from '$lib/components/AnalyticsControls.svelte';
 	import ConversationBalance from '$lib/components/ConversationBalance.svelte';
 	import ResponseTimeStats from '$lib/components/ResponseTimeStats.svelte';
 	import RelationshipTimeline from '$lib/components/RelationshipTimeline.svelte';
-	import ContactsNetworkGraph from '$lib/components/ContactsNetworkGraph.svelte';
-	import { AnalyticsExporter } from '$lib/utils/exportUtils';
 	import stopwords from 'stopwords-ru';
 
 	let analytics: ChatAnalytics[] = [];
@@ -24,10 +20,8 @@
 	let processingStep = '';
 	let processedCount = 0;
 	let totalCount = 0;
-	let controlsOpen = false;
 	let userStatsPage = 0;
 	let usersPerPage = 20;
-	let isExporting = false;
 
 	$: totalMessages = analytics.reduce((sum, chat) => sum + chat.totalMessages, 0);
 	$: totalUserMessages = analytics.reduce((sum, chat) => sum + chat.userMessages, 0);
@@ -75,18 +69,13 @@
 		}
 
 		try {
-			// Parse messages with high limits for caching
-			const rawAnalytics = await parseMessagesForChats(archiveData.zip, selectedChatIds, (step, processed, total) => {
+			// Parse messages
+			analytics = await parseMessagesForChats(archiveData.zip, selectedChatIds, (step, processed, total) => {
 				processingStep = step;
 				processedCount = processed;
 				totalCount = total;
 			});
 			
-			// Create cached analytics with extended data
-			cachedAnalytics = rawAnalytics.map(chat => preprocessChatForCache(chat));
-			
-			// Apply initial filtering from cached data
-			applyCachedFilters();
 			isLoading = false;
 		} catch (err) {
 			console.error('Error analyzing messages:', err);
@@ -99,242 +88,10 @@
 		goto('/chats');
 	}
 
-	// Preprocess chat data with maximum cached limits
-	function preprocessChatForCache(chat: ChatAnalytics): ChatAnalytics {
-		// Extend top words to cache limit
-		const extendedTopWords = chat.topWords.slice(0, CACHE_LIMITS.MAX_TOP_WORDS);
-		
-		// Extend user stats with more top words
-		const extendedUserStats = chat.userStats.map(user => ({
-			...user,
-			topWords: user.topWords.slice(0, CACHE_LIMITS.MAX_USER_TOP_WORDS)
-		}));
 
-		return {
-			...chat,
-			topWords: extendedTopWords,
-			userStats: extendedUserStats
-		};
-	}
 
-	// Fast filtering using cached preprocessed data
-	function applyCachedFilters() {
-		const config = $analyticsConfig.applied; // Use applied config, not draft
-		
-		analytics = cachedAnalytics.map(cachedChat => {
-			let filteredMessages = cachedChat.messages;
-			
-			// Apply date range filter (still need to filter messages for accurate counts)
-			if (config.dateRange.enabled && (config.dateRange.start || config.dateRange.end)) {
-				filteredMessages = filteredMessages.filter(msg => {
-					if (config.dateRange.start && msg.timestamp < config.dateRange.start) return false;
-					if (config.dateRange.end && msg.timestamp > config.dateRange.end) return false;
-					return true;
-				});
-			}
-			
-			// Apply message type filters
-			filteredMessages = filteredMessages.filter(msg => {
-				const content = msg.content.toLowerCase();
-				
-				if (content.includes('фотография') || content.includes('изображение')) {
-					return config.messageTypes.photos;
-				} else if (content.includes('стикер')) {
-					return config.messageTypes.stickers;
-				} else if (content.includes('прикреплённое сообщение') || content.includes('переслано')) {
-					return config.messageTypes.forwardedMessages;
-				} else if (content.includes('голосовое сообщение') || content.includes('аудиозапись')) {
-					return config.messageTypes.voiceMessages;
-				} else if (content.includes('документ') || content.includes('файл')) {
-					return config.messageTypes.documents;
-				} else {
-					return config.messageTypes.textMessages;
-				}
-			});
-			
-			// Use cached data and trim based on current config instead of full recalculation
-			return applyCachedConfig(cachedChat, filteredMessages, config);
-		});
-	}
 
-	// Apply config limits to cached data without full recalculation
-	function applyCachedConfig(cachedChat: ChatAnalytics, filteredMessages: any[], config: any): ChatAnalytics {
-		// If no filtering needed, just trim cached data to current config
-		if (filteredMessages.length === cachedChat.messages.length) {
-			return {
-				...cachedChat,
-				// Trim top words to current config limit
-				topWords: cachedChat.topWords
-					.filter(word => word.count >= config.minWordFrequency)
-					.slice(0, config.topWordsCount),
-				// Trim user stats to current config limit
-				userStats: cachedChat.userStats.map(user => ({
-					...user,
-					topWords: user.topWords.slice(0, config.userTopWordsCount)
-				}))
-			};
-		}
-		
-		// If messages were filtered, do minimal recalculation
-		return recalculateAnalytics(cachedChat, filteredMessages, config);
-	}
 
-	function recalculateAnalytics(originalChat: ChatAnalytics, filteredMessages: any[], config?: any): ChatAnalytics {
-		if (filteredMessages.length === 0) {
-			return {
-				...originalChat,
-				messages: [],
-				totalMessages: 0,
-				userMessages: 0,
-				otherMessages: 0,
-				userStats: [],
-				topWords: [],
-				mostActiveHours: {},
-				mostActiveDays: {},
-				wordCount: 0
-			};
-		}
-
-		// messageParser.ts already extracts clean message content, no VK system filtering needed
-		const russianStopwords = new Set(stopwords);
-
-		const isNonMeaningfulText = (word: string): boolean => {
-			if (/^https?/.test(word) || /\.(com|ru|org|net|io|co|uk)/.test(word)) return true;
-			if (/^id\d+/.test(word)) return true;
-			if (word.length > 30 && !/[а-яё]/i.test(word)) return true;
-			if (word.length > 10 && /\d/.test(word) && /[a-z]/i.test(word) && !/[а-яё]/i.test(word)) return true;
-			if (/\.(jpg|jpeg|png|gif|mp4|avi|mp3|pdf|doc|docx|txt|zip|rar)$/i.test(word)) return true;
-			if (word === 'pin' || /^pin\d+$/.test(word)) return true;
-			return false;
-		};
-
-		const userMessages = filteredMessages.filter(m => m.isFromUser).length;
-		const otherMessages = filteredMessages.length - userMessages;
-		const userStatsMap: { [sender: string]: any } = {};
-		const wordCounts: { [word: string]: number } = {};
-		const hourActivity: { [hour: number]: number } = {};
-		const dayActivity: { [day: string]: number } = {};
-		let totalWords = 0;
-
-		filteredMessages.forEach(message => {
-			const sender = message.sender;
-			if (!userStatsMap[sender]) {
-				userStatsMap[sender] = {
-					sender, totalMessages: 0, wordCount: 0, averageMessageLength: 0,
-					messageTypes: { photos: 0, stickers: 0, forwardedMessages: 0, wallPosts: 0, voiceMessages: 0, documents: 0, textMessages: 0 },
-					mostActiveHours: {}, mostActiveDays: {}, topWords: [], userWordCounts: {}
-				};
-			}
-
-			const userStats = userStatsMap[sender];
-			const content = message.content.toLowerCase();
-
-			userStats.totalMessages++;
-			const words = message.content.toLowerCase().split(/\s+/).filter((word: string) => word.length > 0);
-			userStats.wordCount += words.length;
-			totalWords += words.length;
-
-			const hour = message.timestamp.getHours();
-			const day = message.timestamp.toLocaleDateString('ru-RU', { weekday: 'long' });
-			userStats.mostActiveHours[hour] = (userStats.mostActiveHours[hour] || 0) + 1;
-			userStats.mostActiveDays[day] = (userStats.mostActiveDays[day] || 0) + 1;
-			hourActivity[hour] = (hourActivity[hour] || 0) + 1;
-			dayActivity[day] = (dayActivity[day] || 0) + 1;
-
-			const cleanWords = content
-				.replace(/[^\u0400-\u04FF\w\s]/g, '')
-				.split(/\s+/)
-				.filter((word: string) =>
-					word.length > 2 &&
-					!russianStopwords.has(word) &&
-					!/^\d+$/.test(word) &&
-					!isNonMeaningfulText(word)
-				);
-
-			cleanWords.forEach((word: string) => {
-				wordCounts[word] = (wordCounts[word] || 0) + 1;
-				// Track per-user word counts
-				if (!userStats.userWordCounts) userStats.userWordCounts = {};
-				userStats.userWordCounts[word] = (userStats.userWordCounts[word] || 0) + 1;
-			});
-		});
-
-		// Calculate top words for each user
-		Object.values(userStatsMap).forEach((user: any) => {
-			if (user.userWordCounts) {
-				user.topWords = Object.entries(user.userWordCounts)
-					.sort(([,a], [,b]) => (b as number) - (a as number))
-					.slice(0, 20) // Top 20 words per user
-					.map(([word, count]) => ({ word, count }));
-			}
-		});
-
-		const userStats = Object.values(userStatsMap).sort((a: any, b: any) => b.totalMessages - a.totalMessages);
-
-		const topWords = Object.entries(wordCounts)
-			.sort(([,a], [,b]) => (b as number) - (a as number))
-			.slice(0, 500) // Keep a larger pool of words for the component to use
-			.map(([word, count]) => ({ word, count }));
-
-		return {
-			...originalChat,
-			messages: filteredMessages,
-			totalMessages: filteredMessages.length,
-			userMessages,
-			otherMessages,
-			userStats,
-			topWords,
-			mostActiveHours: hourActivity,
-			mostActiveDays: dayActivity,
-			wordCount: totalWords
-		};
-		// --- End of Corrected Logic ---
-	}
-
-	function onConfigSaved() {
-		// Only reapply filters when settings are actually saved
-		applyCachedFilters();
-	}
-
-	function openControls() {
-		controlsOpen = true;
-	}
-
-	// Export functions
-	async function exportData(format: 'json' | 'csv' | 'png') {
-		if (!analytics.length) {
-			alert('No data available to export');
-			return;
-		}
-
-		isExporting = true;
-
-		try {
-			const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-			const fileName = `vk-analytics-${timestamp}`;
-			
-			const exportOptions = {
-				format,
-				includeUserStats: true,
-				includeWordAnalysis: true,
-				includeRawData: format === 'json' // Only include raw data for JSON
-			};
-
-			await AnalyticsExporter.exportAnalytics(analytics, exportOptions, fileName);
-			
-			console.log(`Export completed: ${fileName}.${format}`);
-		} catch (err) {
-			console.error('Export failed:', err);
-			alert('Export failed. Please try again.');
-		} finally {
-			isExporting = false;
-		}
-	}
-
-	// Only react to applied configuration changes, not draft changes
-	$: if ($analyticsConfig.applied && cachedAnalytics.length > 0) {
-		applyCachedFilters();
-	}
 
 	// Merge user statistics across multiple chats
 	$: allUserStats = (() => {
@@ -450,12 +207,10 @@
 		}, {} as { [word: string]: number });
 
 	// Apply word frequency filtering using applied config
-	$: filteredWords = Object.entries(allWords)
-		.filter(([, count]) => count >= $analyticsConfig.applied.minWordFrequency)
-		.sort(([,a], [,b]) => b - a);
-
-	$: topWordsList = filteredWords
-		.slice(0, $analyticsConfig.applied.topWordsCount)
+	$: topWordsList = Object.entries(allWords)
+		.filter(([, count]) => count >= 5) // Set static min frequency
+		.sort(([,a], [,b]) => b - a)
+		.slice(0, 100) // Set static top words count
 		.map(([word, count]) => ({ word, count }));
 </script>
 
@@ -472,40 +227,7 @@
 			<p>Analysis of {selectedChatIds.length} selected chat{selectedChatIds.length !== 1 ? 's' : ''}</p>
 		</div>
 	</div>
-	<div class="header-actions">
-		<div class="export-buttons">
-			<button
-				class="export-button"
-				on:click={() => exportData('json')}
-				disabled={isExporting}
-				title="Export as JSON"
-			>
-				{#if isExporting}⏳{:else}📄{/if} JSON
-			</button>
-			<button
-				class="export-button"
-				on:click={() => exportData('csv')}
-				disabled={isExporting}
-				title="Export as CSV"
-			>
-				{#if isExporting}⏳{:else}📊{/if} CSV
-			</button>
-			<button
-				class="export-button"
-				on:click={() => exportData('png')}
-				disabled={isExporting}
-				title="Export as Image"
-			>
-				{#if isExporting}⏳{:else}🖼️{/if} PNG
-			</button>
-		</div>
-		<button class="settings-button" on:click={openControls} aria-label="Open settings">
-			⚙️ Settings
-			{#if $analyticsConfig.hasChanges}
-				<span class="changes-indicator">●</span>
-			{/if}
-		</button>
-	</div>
+	<div class="header-actions"></div>
 </header>
 
 	{#if isLoading}
@@ -743,7 +465,7 @@
 								<div class="user-top-words">
 									<h5>Top Words:</h5>
 									<div class="word-tags">
-										{#each user.topWords.slice(0, $analyticsConfig.applied.userTopWordsCount) as { word, count }}
+										{#each user.topWords.slice(0, 10) as { word, count }}
 											<span class="word-tag">{word} ({count})</span>
 										{/each}
 									</div>
@@ -833,9 +555,6 @@
 		<section class="advanced-analytics">
 			<h2>Advanced Analytics</h2>
 			
-			<!-- Contacts Network Graph -->
-			<ContactsNetworkGraph {analytics} maxContacts={10} />
-			
 			<!-- Conversation Balance for each chat -->
 			{#each analytics as chat}
 				{#if chat.userMessages > 0 && chat.otherMessages > 0}
@@ -880,7 +599,7 @@
 			<h2>Word Analysis</h2>
 			<div class="words-container">
 				<div class="top-words-list">
-					<h3>Top {$analyticsConfig.applied.topWordsCount} Words</h3>
+					<h3>Top 100 Words</h3>
 					<div class="words-horizontal">
 						{#each topWordsList as { word, count }, index}
 							<div class="word-item">
@@ -897,7 +616,6 @@
 </main>
 
 <!-- Configuration Controls -->
-<AnalyticsControls bind:isOpen={controlsOpen} on:configSaved={onConfigSaved} />
 
 <style>
 	.container {

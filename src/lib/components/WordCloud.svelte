@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { onMount, afterUpdate } from 'svelte';
-	import { analyticsConfig } from '$lib/stores/analyticsConfig';
 
 	export let words: { word: string; count: number }[];
 
@@ -14,7 +13,6 @@
 
 	// Enhanced size calculation with responsive control
 	function getWordSize(count: number): number {
-		const config = $analyticsConfig;
 		
 		// Responsive size limits based on container size
 		let minSize = 0.7;
@@ -252,44 +250,6 @@
 		hoveredWord = word;
 	}
 
-	// Export word cloud as image
-	function exportWordCloud() {
-		if (!cloudContainer) return;
-
-		const canvas = document.createElement('canvas');
-		const ctx = canvas.getContext('2d');
-		if (!ctx) return;
-
-		const containerRect = cloudContainer.getBoundingClientRect();
-		canvas.width = containerRect.width;
-		canvas.height = containerRect.height;
-
-		// Set white background
-		ctx.fillStyle = 'white';
-		ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-		// Draw words
-		const words = cloudContainer.querySelectorAll('.word-item') as NodeListOf<HTMLElement>;
-		words.forEach(wordElement => {
-			const style = window.getComputedStyle(wordElement);
-			const rect = wordElement.getBoundingClientRect();
-			const containerRect = cloudContainer.getBoundingClientRect();
-			
-			ctx.fillStyle = style.color;
-			ctx.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-			ctx.fillText(
-				wordElement.textContent || '',
-				rect.left - containerRect.left,
-				rect.top - containerRect.top + rect.height * 0.8
-			);
-		});
-
-		// Download
-		const link = document.createElement('a');
-		link.download = 'word-cloud.png';
-		link.href = canvas.toDataURL();
-		link.click();
-	}
 
 	function cycleLayoutStrategy() {
 		const strategies = ['spiral', 'grid', 'random'] as const;
@@ -323,13 +283,6 @@
 				>
 					{#if layoutStrategy === 'spiral'}🌀{:else if layoutStrategy === 'grid'}⊞{:else}🎲{/if}
 					{layoutStrategy}
-				</button>
-				<button 
-					class="export-btn"
-					on:click={exportWordCloud}
-					title="Export word cloud as image"
-				>
-					💾 Export
 				</button>
 			</div>
 			<div class="word-cloud-stats">

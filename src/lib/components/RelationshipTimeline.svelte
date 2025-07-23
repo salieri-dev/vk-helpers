@@ -51,6 +51,24 @@
 		
 		return { trend, change: Math.abs(change) };
 	})();
+
+	let hoveredPeriod: string | null = null;
+	let selectedPeriod: RelationshipTimeline | null = null;
+
+	function handlePeriodClick(period: RelationshipTimeline) {
+		selectedPeriod = selectedPeriod?.month === period.month ? null : period;
+	}
+
+	function getIntensityDescription(level: string): string {
+		switch (level) {
+			case 'very-high': return 'Very High Activity (80-100% of peak)';
+			case 'high': return 'High Activity (60-80% of peak)';
+			case 'medium': return 'Medium Activity (40-60% of peak)';
+			case 'low': return 'Low Activity (20-40% of peak)';
+			case 'very-low': return 'Very Low Activity (0-20% of peak)';
+			default: return 'No Activity';
+		}
+	}
 </script>
 
 <div class="relationship-timeline">
@@ -97,22 +115,59 @@
 		</div>
 
 		<div class="timeline-chart">
+			<div class="color-legend">
+				<h5>Activity Intensity Legend</h5>
+				<div class="legend-items">
+					<div class="legend-item">
+						<div class="legend-color very-high"></div>
+						<span>{getIntensityDescription('very-high')}</span>
+					</div>
+					<div class="legend-item">
+						<div class="legend-color high"></div>
+						<span>{getIntensityDescription('high')}</span>
+					</div>
+					<div class="legend-item">
+						<div class="legend-color medium"></div>
+						<span>{getIntensityDescription('medium')}</span>
+					</div>
+					<div class="legend-item">
+						<div class="legend-color low"></div>
+						<span>{getIntensityDescription('low')}</span>
+					</div>
+					<div class="legend-item">
+						<div class="legend-color very-low"></div>
+						<span>{getIntensityDescription('very-low')}</span>
+					</div>
+				</div>
+			</div>
+
 			<div class="timeline-grid">
 				{#each timeline as period, index}
-					<div class="timeline-period">
+					<div
+						class="timeline-period"
+						class:hovered={hoveredPeriod === period.month}
+						class:selected={selectedPeriod?.month === period.month}
+						on:mouseenter={() => hoveredPeriod = period.month}
+						on:mouseleave={() => hoveredPeriod = null}
+						on:click={() => handlePeriodClick(period)}
+						role="button"
+						tabindex="0"
+						on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') handlePeriodClick(period); }}
+					>
 						<div class="period-header">
 							<span class="period-month">{formatMonth(period.month)}</span>
 						</div>
 						<div class="period-bar">
-							<div 
+							<div
 								class="period-fill {getIntensityLevel(period.totalMessages, maxMessages)}"
 								style="height: {maxMessages > 0 ? (period.totalMessages / maxMessages) * 100 : 0}%"
-								title="{period.totalMessages} messages"
+								title="{getIntensityDescription(getIntensityLevel(period.totalMessages, maxMessages))}"
 							>
 								<div class="message-breakdown">
-									<div 
-										class="user-portion" 
+									<div
+										class="user-portion"
 										style="height: {period.totalMessages > 0 ? (period.userMessages / period.totalMessages) * 100 : 0}%"
+										title="Your messages: {period.userMessages}"
 									></div>
 								</div>
 							</div>
@@ -125,6 +180,32 @@
 								<span class="other-count" title="Other messages">{period.otherMessages}</span>
 							</div>
 						</div>
+
+						{#if hoveredPeriod === period.month || selectedPeriod?.month === period.month}
+							<div class="period-tooltip">
+								<div class="tooltip-content">
+									<div class="tooltip-header">{formatMonth(period.month)}</div>
+									<div class="tooltip-stats">
+										<div class="tooltip-stat">
+											<span class="tooltip-label">Total Messages:</span>
+											<span class="tooltip-value">{period.totalMessages}</span>
+										</div>
+										<div class="tooltip-stat">
+											<span class="tooltip-label">Your Messages:</span>
+											<span class="tooltip-value">{period.userMessages} ({Math.round((period.userMessages / period.totalMessages) * 100)}%)</span>
+										</div>
+										<div class="tooltip-stat">
+											<span class="tooltip-label">Other Messages:</span>
+											<span class="tooltip-value">{period.otherMessages} ({Math.round((period.otherMessages / period.totalMessages) * 100)}%)</span>
+										</div>
+										<div class="tooltip-stat">
+											<span class="tooltip-label">Activity Level:</span>
+											<span class="tooltip-value">{getIntensityDescription(getIntensityLevel(period.totalMessages, maxMessages)).split(' (')[0]}</span>
+										</div>
+									</div>
+								</div>
+							</div>
+						{/if}
 					</div>
 				{/each}
 			</div>
@@ -230,6 +311,63 @@
 		margin-bottom: 1rem;
 	}
 
+	.color-legend {
+		margin-bottom: 1.5rem;
+		padding: 1rem;
+		background: #f8f9fa;
+		border-radius: 6px;
+		border: 1px solid #e9ecef;
+	}
+
+	.color-legend h5 {
+		margin: 0 0 1rem 0;
+		color: #495057;
+		font-size: 0.9rem;
+		font-weight: 600;
+		text-align: center;
+	}
+
+	.legend-items {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+		gap: 0.5rem;
+	}
+
+	.legend-item {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: 0.75rem;
+		color: #6c757d;
+	}
+
+	.legend-color {
+		width: 16px;
+		height: 16px;
+		border-radius: 3px;
+		border: 1px solid rgba(0,0,0,0.1);
+	}
+
+	.legend-color.very-high {
+		background: linear-gradient(180deg, #28a745, #34ce57);
+	}
+
+	.legend-color.high {
+		background: linear-gradient(180deg, #20c997, #25e5cc);
+	}
+
+	.legend-color.medium {
+		background: linear-gradient(180deg, #4a90e2, #5ba3f5);
+	}
+
+	.legend-color.low {
+		background: linear-gradient(180deg, #ffc107, #ffcd39);
+	}
+
+	.legend-color.very-low {
+		background: linear-gradient(180deg, #dc3545, #e55a64);
+	}
+
 	.timeline-grid {
 		display: flex;
 		gap: 1px;
@@ -244,6 +382,30 @@
 		flex-direction: column;
 		align-items: center;
 		gap: 0.5rem;
+		cursor: pointer;
+		transition: all 0.2s ease;
+		position: relative;
+		padding: 0.25rem;
+		border-radius: 4px;
+	}
+
+	.timeline-period:hover {
+		background: rgba(74, 144, 226, 0.1);
+		transform: translateY(-2px);
+	}
+
+	.timeline-period.hovered {
+		background: rgba(74, 144, 226, 0.15);
+	}
+
+	.timeline-period.selected {
+		background: rgba(74, 144, 226, 0.2);
+		border: 2px solid #4a90e2;
+	}
+
+	.timeline-period:focus {
+		outline: 2px solid #4a90e2;
+		outline-offset: 2px;
 	}
 
 	.period-header {
@@ -382,6 +544,64 @@
 		background: #28a745;
 	}
 
+	.period-tooltip {
+		position: absolute;
+		bottom: 120%;
+		left: 50%;
+		transform: translateX(-50%);
+		z-index: 1000;
+		white-space: nowrap;
+	}
+
+	.tooltip-content {
+		background: rgba(0, 0, 0, 0.9);
+		color: white;
+		padding: 0.75rem;
+		border-radius: 6px;
+		font-size: 0.8rem;
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+		min-width: 200px;
+	}
+
+	.tooltip-content::after {
+		content: '';
+		position: absolute;
+		top: 100%;
+		left: 50%;
+		transform: translateX(-50%);
+		border: 6px solid transparent;
+		border-top-color: rgba(0, 0, 0, 0.9);
+	}
+
+	.tooltip-header {
+		font-weight: 600;
+		margin-bottom: 0.5rem;
+		text-align: center;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+		padding-bottom: 0.5rem;
+	}
+
+	.tooltip-stats {
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+	}
+
+	.tooltip-stat {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+	}
+
+	.tooltip-label {
+		color: rgba(255, 255, 255, 0.8);
+	}
+
+	.tooltip-value {
+		font-weight: 500;
+		color: #fff;
+	}
+
 	@media (max-width: 768px) {
 		.relationship-timeline {
 			padding: 1rem;
@@ -405,6 +625,18 @@
 		
 		.period-bar {
 			height: 80px;
+		}
+
+		.period-tooltip {
+			position: fixed;
+			bottom: auto;
+			top: 50%;
+			left: 50%;
+			transform: translate(-50%, -50%);
+		}
+
+		.tooltip-content {
+			min-width: 250px;
 		}
 	}
 </style>

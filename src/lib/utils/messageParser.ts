@@ -318,7 +318,7 @@ function parseMessagesFromHtml(htmlContent: string, fileName: string = 'Unknown'
 				kludgesToRemove.forEach(k => k.remove());
 				
 				const text = clonedDiv.textContent?.trim() || '';
-				content = text;
+				content = attachmentInfo ? `${text} ${attachmentInfo}`.trim() : text;
 				break;
 			}
 
@@ -795,9 +795,9 @@ function calculateAnalytics(chatId: string, chatName: string, messages: Message[
 		user.topWords = Object.entries(userWordCounts)
 			.sort(([,a], [,b]) => b - a)
 			.slice(0, 10)
-			.map(([word, count]) => ({ word, count }));
+			.map(([word, count]) => ({ word, count, userWordCounts: userWordCounts }));
 
-		return user;
+		return { ...user, userWordCounts };
 	});
 
 	// Sort users by message count
