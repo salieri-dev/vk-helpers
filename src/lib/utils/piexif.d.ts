@@ -18,7 +18,7 @@ declare module 'piexifjs' {
   interface ExifIFD {
     DateTimeOriginal: number;
     DateTimeDigitized: number;
-  }
+   }
 
   const piexif: {
     ImageIFD: ImageIFD;
@@ -26,6 +26,7 @@ declare module 'piexifjs' {
     load(data: string): ExifDict;
     dump(exifDict: ExifDict): string;
     insert(exif: string, jpeg: string): string;
+    remove(jpeg: string): string;
   };
 
   export default piexif;

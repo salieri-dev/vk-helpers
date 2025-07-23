@@ -29,7 +29,9 @@ export async function addExifMetadata(
 		}
 
 		// Convert blob to data URL for piexifjs
-		const dataUrl = await blobToDataUrl(imageBlob);
+		const originalDataUrl = await blobToDataUrl(imageBlob);
+		// Strip existing EXIF data to prevent encoding issues
+		const dataUrl = piexif.remove(originalDataUrl);
 		
 		// Create a minimal EXIF structure with only essential fields
 		const timestamp = imageInfo.timestamp;
@@ -62,16 +64,20 @@ export async function addExifMetadata(
 		// Add source URL (shortened)
 		const shortUrl = imageInfo.url.length > 50 ?
 			imageInfo.url.substring(0, 50) + '...' : imageInfo.url;
-		metadata.push(`URL: ${shortUrl}`);
+		// URL is cleaned to prevent invalid characters in EXIF metadata
+		metadata.push(`URL: ${cleanForExif(shortUrl, 60)}`);
 		
-		const description = metadata.join(' | ').substring(0, 200);
+		const description = metadata.join(' | '); // Join without substring first
+		
+		// Clean and truncate the FINAL description string to ensure Latin1 compatibility
+		const cleanDescription = cleanForExif(description, 200);
 		
 		// Create minimal EXIF dictionary with only well-supported fields
 		const exifDict = {
 			"0th": {
 				[piexif.ImageIFD.DateTime]: exifDateString,
 				[piexif.ImageIFD.Software]: "VK Analytics PWA",
-				[piexif.ImageIFD.ImageDescription]: description
+				[piexif.ImageIFD.ImageDescription]: cleanDescription
 			},
 			"Exif": {
 				[piexif.ExifIFD.DateTimeOriginal]: exifDateString,
@@ -88,8 +94,6 @@ export async function addExifMetadata(
 			exifDict["0th"][piexif.ImageIFD.Artist] = safeArtistName;
 		}
 
-		console.log(`Processing EXIF for ${imageInfo.filename} with date ${exifDateString}`);
-
 		// Convert to EXIF bytes and insert into image
 		const exifBytes = piexif.dump(exifDict);
 		const newDataUrl = piexif.insert(exifBytes, dataUrl);
@@ -97,7 +101,6 @@ export async function addExifMetadata(
 		// Convert back to blob
 		const newBlob = dataUrlToBlob(newDataUrl);
 		
-		console.log(`✅ Successfully added EXIF to ${imageInfo.filename}`);
 		return newBlob;
 
 	} catch (error) {
@@ -200,20 +203,49 @@ function blobToDataUrl(blob: Blob): Promise<string> {
 }
 
 /**
- * Helper: Convert data URL to blob
+ * Helper: Convert data URL to blob (with Unicode-safe base64 decoding)
  */
 function dataUrlToBlob(dataUrl: string): Blob {
 	const arr = dataUrl.split(',');
 	const mime = arr[0].match(/:(.*?);/)![1];
-	const bstr = atob(arr[1]);
-	let n = bstr.length;
-	const u8arr = new Uint8Array(n);
 	
-	while (n--) {
-		u8arr[n] = bstr.charCodeAt(n);
+	// Use a Unicode-safe base64 decoder instead of atob()
+	const bstr = base64ToBytes(arr[1]);
+	const u8arr = new Uint8Array(bstr.length);
+	
+	for (let i = 0; i < bstr.length; i++) {
+		u8arr[i] = bstr.charCodeAt(i);
 	}
 	
 	return new Blob([u8arr], { type: mime });
+}
+
+/**
+ * Unicode-safe base64 decoder (replacement for atob)
+ */
+function base64ToBytes(base64: string): string {
+	// Always use the manual, Unicode-safe decoder. This is more robust than atob().
+	const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+	let result = '';
+	let i = 0;
+
+	// Remove padding and invalid characters
+	base64 = base64.replace(/[^A-Za-z0-9+/]/g, '');
+
+	while (i < base64.length) {
+		const encoded1 = chars.indexOf(base64.charAt(i++));
+		const encoded2 = chars.indexOf(base64.charAt(i++));
+		const encoded3 = chars.indexOf(base64.charAt(i++));
+		const encoded4 = chars.indexOf(base64.charAt(i++));
+
+		const bitmap = (encoded1 << 18) | (encoded2 << 12) | (encoded3 << 6) | encoded4;
+
+		result += String.fromCharCode((bitmap >> 16) & 255);
+		if (encoded3 !== 64) result += String.fromCharCode((bitmap >> 8) & 255);
+		if (encoded4 !== 64) result += String.fromCharCode(bitmap & 255);
+	}
+	
+	return result;
 }
 
 /**

@@ -3,6 +3,9 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { archiveStore } from '$lib/stores/archive';
+	import { progressStore } from '$lib/stores/progress';
+	import { downloadService } from '$lib/services/download.service';
+	import { databaseService } from '$lib/db/database';
 	import { extractImagesFromChats } from '$lib/utils/imageExtractor';
 	import { extractImagesFromAlbums } from '$lib/utils/albumImageExtractor';
 	import { downloadImagesAsZip, downloadZipFile, generateZipFilename } from '$lib/utils/imageDownloader';
@@ -24,7 +27,7 @@
 	let albumExtractionProgress: AlbumImageExtractionProgress | null = null;
 	let downloadProgress: DownloadProgress | null = null;
 	let extractedImages: ImageInfo[] = [];
-	let downloadResult: DownloadResult | null = null;
+	let downloadResult: any = null; // Can be either old or new DownloadResult type
 	let error: string | null = null;
 
 	// Configuration options
@@ -35,7 +38,20 @@
 		addExifMetadata: true
 	};
 
+	// File System Access API detection
+	let supportsFileSystemAccess = false;
+	let downloadMethod = 'zip'; // 'filesystem' or 'zip'
+	let selectedDownloadMethod = 'auto'; // User's choice: 'auto', 'filesystem', 'zip'
+	let operationId: string | null = null;
+	let currentProgress: any = null;
+	let selectedDirectoryHandle: FileSystemDirectoryHandle | null = null;
+
 	onMount(() => {
+		// Detect File System Access API support
+		supportsFileSystemAccess = downloadService.isFileSystemSupported();
+		downloadMethod = supportsFileSystemAccess ? 'filesystem' : 'zip';
+		selectedDownloadMethod = supportsFileSystemAccess ? 'filesystem' : 'zip';
+
 		archiveStore.subscribe(data => {
 			archiveData = data;
 			
@@ -43,6 +59,50 @@
 			if (!data.file) {
 				goto('/');
 				return;
+			}
+		});
+
+		// Subscribe to progress updates
+		progressStore.subscribe(progressData => {
+			// For File System downloads, check all active operations since we might not have the exact ID
+			if (currentPhase === 'download') {
+				for (const [opId, operation] of progressData.activeOperations) {
+					if (operation && (operationId === opId || opId.startsWith('download_'))) {
+						currentProgress = operation?.progress;
+
+						// Update downloadProgress for consistent UI display
+						if (currentProgress) {
+							// Debug log to see what we're receiving
+							console.log('UI Progress Update:', {
+								received: currentProgress,
+								processed: currentProgress.processed,
+								total: currentProgress.total,
+								percentage: currentProgress.percentage
+							});
+							
+							downloadProgress = {
+								currentStep: currentProgress.step || 'Downloading...',
+								currentImage: currentProgress.currentItem || '',
+								downloadedImages: currentProgress.processed || 0,
+								totalImages: currentProgress.total || 0,
+								failedImages: 0, // This would need to be tracked separately
+								percentage: Math.round(currentProgress.percentage || 0),
+								estimatedTimeRemaining: undefined // Not available from current progress
+							};
+						}
+
+						if (operation?.status === 'complete') {
+							currentPhase = 'complete';
+							downloadResult = operation.metadata?.result;
+							operationId = null;
+						} else if (operation?.status === 'error') {
+							currentPhase = 'error';
+							error = operation.error || 'Download failed';
+							operationId = null;
+						}
+						break; // Found the relevant operation
+					}
+				}
 			}
 		});
 
@@ -90,13 +150,20 @@
 
 		try {
 			if (downloadType === 'chats') {
+				console.log('Starting chat image extraction for chats:', selectedChatIds);
+				console.log('Archive contains:', archiveData.chats.length, 'total chats');
+				
 				extractedImages = await extractImagesFromChats(
 					archiveData,
 					selectedChatIds,
 					(progress) => {
 						extractionProgress = progress;
+						console.log('Extraction progress:', progress);
 					}
 				);
+
+				console.log('Extraction completed. Found', extractedImages.length, 'images');
+				console.log('First few images:', extractedImages.slice(0, 3));
 
 				if (extractedImages.length === 0) {
 					error = 'No images found in the selected chats.';
@@ -138,22 +205,93 @@
 		currentPhase = 'download';
 
 		try {
-			downloadResult = await downloadImagesAsZip(extractedImages, {
-				batchSize: downloadConfig.batchSize,
-				concurrentDownloads: downloadConfig.concurrentDownloads,
-				retryAttempts: downloadConfig.retryAttempts,
-				addExifMetadata: downloadConfig.addExifMetadata,
-				onProgress: (progress) => {
-					downloadProgress = progress;
+			if (selectedDownloadMethod === 'filesystem') {
+				// Use new File System Access API
+				const archiveId = 'current_archive';
+				const photoRecords = extractedImages.map((img, index) => ({
+					id: `${archiveId}_photo_${index}`,
+					archiveId: archiveId,
+					photoId: `photo_${index}`,
+					chatId: img.chatName,
+					url: img.url,
+					vkUrl: img.url, // Using the same URL for now
+					filename: img.filename,
+					timestamp: img.timestamp,
+					altText: '',
+					downloadStatus: 'pending' as const
+				}));
+
+				console.log('Created', photoRecords.length, 'photo records for download');
+				console.log('Photo record IDs:', photoRecords.map(p => p.id).slice(0, 5));
+
+				// Check if photos already exist in database first
+				const existingPhotos = await databaseService.getPhotosByArchive(archiveId);
+				const existingPhotoIds = new Set(existingPhotos.map(p => p.id));
+				
+				// Only create photos that don't already exist
+				const newPhotoRecords = photoRecords.filter(photo => !existingPhotoIds.has(photo.id));
+				
+				if (newPhotoRecords.length > 0) {
+					try {
+						await databaseService.createPhotos(newPhotoRecords);
+					} catch (error) {
+						// If there's still a constraint error, log it but continue
+						if (error instanceof Error && error.name === 'ConstraintError') {
+							console.log('Some photos already exist, continuing...');
+						} else {
+							throw error;
+						}
+					}
+				} else {
+					console.log('All photos already exist in database, proceeding with download');
 				}
-			});
+
+				const downloadRequest = {
+					archiveId: archiveId,
+					photoIds: photoRecords.map(p => p.id),
+					options: {
+						useFileSystem: true,
+						directoryHandle: selectedDirectoryHandle || undefined, // Use pre-selected directory
+						concurrentDownloads: downloadConfig.concurrentDownloads,
+						batchSize: downloadConfig.batchSize,
+						retryAttempts: downloadConfig.retryAttempts,
+						addExifMetadata: downloadConfig.addExifMetadata,
+						createProgressLog: true
+					}
+				};
+
+				// Set initial download progress
+				downloadProgress = {
+					currentStep: 'Starting download...',
+					currentImage: '',
+					downloadedImages: 0,
+					totalImages: photoRecords.length,
+					failedImages: 0,
+					percentage: 0,
+					estimatedTimeRemaining: undefined
+				};
+				
+				downloadResult = await downloadService.downloadImages(downloadRequest);
+
+			} else {
+				// Fallback to old ZIP method
+				downloadResult = await downloadImagesAsZip(extractedImages, {
+					batchSize: downloadConfig.batchSize,
+					concurrentDownloads: downloadConfig.concurrentDownloads,
+					retryAttempts: downloadConfig.retryAttempts,
+					addExifMetadata: downloadConfig.addExifMetadata,
+					onProgress: (progress) => {
+						downloadProgress = progress;
+					}
+				});
+
+				// Auto-download the ZIP file
+				const filename = generateZipFilename(extractedImages);
+				downloadZipFile(downloadResult.zipBlob, filename);
+			}
 
 			currentPhase = 'complete';
 			isProcessing = false;
-
-			// Auto-download the ZIP file
-			const filename = generateZipFilename(extractedImages);
-			downloadZipFile(downloadResult.zipBlob, filename);
 
 		} catch (err) {
 			console.error('Error downloading images:', err);
@@ -163,7 +301,24 @@
 		}
 	}
 
-	function startDownloadProcess() {
+	async function startDownloadProcess() {
+		// If using filesystem method, show folder picker immediately
+		// to preserve user gesture for browser security
+		if (selectedDownloadMethod === 'filesystem') {
+			try {
+				selectedDirectoryHandle = await downloadService.pickDownloadDirectory();
+				if (!selectedDirectoryHandle) {
+					// User cancelled folder selection
+					return;
+				}
+			} catch (error) {
+				console.error('Failed to pick directory:', error);
+				error = error instanceof Error ? error.message : 'Failed to select download folder';
+				currentPhase = 'error';
+				return;
+			}
+		}
+		
 		startImageExtraction();
 	}
 
@@ -185,8 +340,14 @@
 
 	function downloadAgain() {
 		if (downloadResult) {
-			const filename = generateZipFilename(extractedImages);
-			downloadZipFile(downloadResult.zipBlob, filename);
+			// If we have a zipBlob, download it; otherwise retry the download process
+			if (downloadResult.zipBlob) {
+				const filename = generateZipFilename(extractedImages);
+				downloadZipFile(downloadResult.zipBlob, filename);
+			} else {
+				// For File System Access downloads, restart the download process
+				retryDownload();
+			}
 		}
 	}
 </script>
@@ -229,6 +390,49 @@
 			<div class="config-header">
 				<h2>🔧 Download Configuration</h2>
 				<p>Configure download settings to optimize performance and control the process</p>
+			</div>
+
+			<!-- Download Method Indicator -->
+			<div class="download-method-selection">
+				<h4>Choose Download Method</h4>
+				<div class="method-options">
+					<label class="method-option" class:disabled={!supportsFileSystemAccess}>
+						<input
+							type="radio"
+							bind:group={selectedDownloadMethod}
+							value="filesystem"
+							disabled={!supportsFileSystemAccess}
+						/>
+						<div class="method-content">
+							<div class="method-header">
+								<span class="status-bulb">{supportsFileSystemAccess ? '🟢' : '🔴'}</span>
+								<strong>📁 Save to Folder</strong>
+							</div>
+							<small>
+								{#if supportsFileSystemAccess}
+									Direct file system access - choose exactly where files go
+								{:else}
+									Not available in your browser
+								{/if}
+							</small>
+						</div>
+					</label>
+					
+					<label class="method-option">
+						<input
+							type="radio"
+							bind:group={selectedDownloadMethod}
+							value="zip"
+						/>
+						<div class="method-content">
+							<div class="method-header">
+								<span class="status-bulb">🟢</span>
+								<strong>📦 Download as ZIP</strong>
+							</div>
+							<small>Compatible with all browsers - creates a single ZIP file</small>
+						</div>
+					</label>
+				</div>
 			</div>
 
 			<div class="config-options">
@@ -300,7 +504,11 @@
 					← Back
 				</button>
 				<button class="config-btn primary" on:click={startDownloadProcess}>
-					Start Download Process
+					{#if selectedDownloadMethod === 'filesystem'}
+						📁 Choose Folder & Start Download
+					{:else}
+						📦 Start ZIP Download
+					{/if}
 				</button>
 			</div>
 		</section>
@@ -356,7 +564,11 @@
 		<section class="progress-section">
 			<div class="progress-header">
 				<h2>📸 Downloading Images</h2>
-				<p>Downloading {extractedImages.length} images, adding EXIF metadata, and creating ZIP archive...</p>
+				{#if selectedDownloadMethod === 'filesystem'}
+					<p>Downloading {extractedImages.length} images with EXIF metadata directly to your selected folder...</p>
+				{:else}
+					<p>Downloading {extractedImages.length} images, adding EXIF metadata, and creating ZIP archive...</p>
+				{/if}
 			</div>
 
 			{#if downloadProgress}
@@ -403,15 +615,17 @@
 				</div>
 
 				<div class="action-buttons">
-					<button class="primary-button" on:click={downloadAgain}>
-						📦 Download ZIP Again
-					</button>
+					{#if selectedDownloadMethod !== 'filesystem'}
+						<button class="primary-button" on:click={retryDownload}>
+							🔄 Download Again
+						</button>
+					{/if}
 					<button class="secondary-button" on:click={goBack}>
-						← Back to Chat Selection
+						← Back to Selection
 					</button>
 				</div>
 
-				{#if downloadResult.failedUrls.length > 0}
+				{#if downloadResult.failedUrls && downloadResult.failedUrls.length > 0}
 					<details class="failed-urls">
 						<summary>View Failed Downloads ({downloadResult.failedUrls.length})</summary>
 						<ul>
@@ -494,6 +708,57 @@
 	.selected-chats li {
 		padding: 0.25rem 0;
 		color: #666;
+	}
+
+	/* Download Method Indicator Styles */
+	.download-method-indicator {
+		background: white;
+		border: 1px solid #e9ecef;
+		border-radius: 8px;
+		padding: 1.5rem;
+		margin: 1.5rem 0;
+	}
+
+	.method-status {
+		display: flex;
+		align-items: flex-start;
+		gap: 1rem;
+	}
+
+	.status-bulb {
+		font-size: 1.5rem;
+		margin-top: 0.2rem;
+	}
+
+	.method-info {
+		flex: 1;
+	}
+
+	.method-info strong {
+		display: block;
+		font-size: 1.1rem;
+		margin-bottom: 0.5rem;
+		color: #333;
+	}
+
+	.method-info small {
+		color: #666;
+		font-size: 0.9rem;
+		line-height: 1.4;
+	}
+
+	.method-status.supported {
+		border-left: 4px solid #28a745;
+		padding-left: 1rem;
+		margin-left: -1rem;
+		background: #f8fff9;
+	}
+
+	.method-status.fallback {
+		border-left: 4px solid #dc3545;
+		padding-left: 1rem;
+		margin-left: -1rem;
+		background: #fff8f8;
 	}
 
 	.progress-section {
@@ -860,6 +1125,106 @@
 
 		.primary-button, .secondary-button {
 			min-width: auto;
+		}
+	}
+
+	/* Download Method Selection Styles */
+	.download-method-selection {
+		background: #f8f9fa;
+		border: 1px solid #e9ecef;
+		border-radius: 8px;
+		padding: 1.5rem;
+		margin-bottom: 2rem;
+	}
+
+	.download-method-selection h4 {
+		color: #495057;
+		margin-bottom: 1rem;
+		font-size: 1.1rem;
+	}
+
+	.method-options {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	.method-option {
+		display: flex;
+		align-items: flex-start;
+		padding: 1rem;
+		background: white;
+		border: 2px solid #e9ecef;
+		border-radius: 8px;
+		cursor: pointer;
+		transition: all 0.2s ease;
+	}
+
+	.method-option:hover {
+		border-color: #4a90e2;
+		background: #f0f7ff;
+	}
+
+	.method-option.disabled {
+		opacity: 0.6;
+		cursor: not-allowed;
+		background: #f8f9fa;
+	}
+
+	.method-option.disabled:hover {
+		border-color: #e9ecef;
+		background: #f8f9fa;
+	}
+
+	.method-option input[type="radio"] {
+		margin-right: 0.75rem;
+		margin-top: 0.2rem;
+		transform: scale(1.2);
+		accent-color: #4a90e2;
+	}
+
+	.method-option.disabled input[type="radio"] {
+		cursor: not-allowed;
+	}
+
+	.method-content {
+		flex: 1;
+	}
+
+	.method-header {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		margin-bottom: 0.25rem;
+	}
+
+	.method-header strong {
+		color: #333;
+		font-size: 1rem;
+	}
+
+	.method-content small {
+		color: #6c757d;
+		font-size: 0.85rem;
+		line-height: 1.3;
+	}
+
+	.method-option.disabled .method-header strong {
+		color: #adb5bd;
+	}
+
+	.method-option.disabled .method-content small {
+		color: #adb5bd;
+	}
+
+	@media (min-width: 600px) {
+		.method-options {
+			flex-direction: row;
+			gap: 1rem;
+		}
+
+		.method-option {
+			flex: 1;
 		}
 	}
 </style>
