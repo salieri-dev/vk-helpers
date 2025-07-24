@@ -3,13 +3,20 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { archiveStore } from '$lib/stores/archive';
-	import { parseMessagesForChats, type ChatAnalytics } from '$lib/utils/messageParser';
+	import { parseMessagesForChats, type ChatAnalytics, type ResponseTimeStats as ResponseTimeStatsType } from '$lib/utils/messageParser';
 	import StatsCard from '$lib/components/StatsCard.svelte';
 	import TimelineChart from '$lib/components/TimelineChart.svelte';
 	import Chart from '$lib/components/Chart.svelte'; // Import your new wrapper
 	import stopwords from 'stopwords-ru';
 	import WordCloud from '$lib/components/WordCloud.svelte';
+	import ConversationBalance from '$lib/components/ConversationBalance.svelte';
+	import RelationshipTimeline from '$lib/components/RelationshipTimeline.svelte';
+	import ResponseTimeStats from '$lib/components/ResponseTimeStats.svelte';
+	import { getEmojiStats } from '$lib/utils/emojiParser';
+	import EmojiCloud from '$lib/components/EmojiCloud.svelte';
+	import TopEmojis from '$lib/components/TopEmojis.svelte';
 
+	let emojiStats: Map<string, number> = new Map();
 	let analytics: ChatAnalytics[] = [];
 	let cachedAnalytics: ChatAnalytics[] = []; // Store cached preprocessed data with high limits
 	let isLoading = true;
@@ -20,6 +27,14 @@
 	let totalCount = 0;
 	let userStatsPage = 0;
 	let usersPerPage = 20;
+
+	// --- ADDED: Configuration State Variables ---
+	let wordCloudLimit = 200;
+	let wordsPerUserLimit = 10; // A smaller default for the user list
+	
+	// --- ADDED: State for word cloud scale ---
+	let wordCloudScale: 'sqrt' | 'linear' | 'log' = 'linear';
+	let wordCloudColorScheme: 'category10' | 'accent' | 'paired' | 'spectral' = 'category10';
 
 	$: totalMessages = analytics.reduce((sum, chat) => sum + chat.totalMessages, 0);
 	$: totalUserMessages = analytics.reduce((sum, chat) => sum + chat.userMessages, 0);
@@ -73,7 +88,7 @@
 				processedCount = processed;
 				totalCount = total;
 			});
-			
+			emojiStats = getEmojiStats(analytics.flatMap((chat) => chat.messages));
 			isLoading = false;
 		} catch (err) {
 			console.error('Error analyzing messages:', err);
@@ -146,7 +161,7 @@
 			user.averageMessageLength = user.totalMessages > 0 ? user.wordCount / user.totalMessages : 0;
 			user.topWords = Object.entries(user.userWordCounts)
 				.sort(([,a], [,b]) => (b as number) - (a as number))
-				.slice(0, 20)
+				.slice(0, wordsPerUserLimit)
 				.map(([word, count]) => ({ word, count }));
 			return user;
 		}).sort((a: any, b: any) => b.totalMessages - a.totalMessages);
@@ -204,98 +219,14 @@
 			return wordMap;
 		}, {} as { [word: string]: number });
 
-	// Apply word frequency filtering using applied config
+	// --- UPDATED: Use the new state variable for the limit ---
 	$: topWordsList = Object.entries(allWords)
-		.filter(([, count]) => count >= 5) // Set static min frequency
+		.filter(([, count]) => count >= 5)
 		.sort(([,a], [,b]) => b - a)
-		.slice(0, 100) // Set static top words count
+		.slice(0, wordCloudLimit) // Use the configurable limit
 		.map(([word, count]) => ({ word, count }));
-	// Create a reactive variable for the chart options
-	$: relationshipTimelineOptions = (chat: ChatAnalytics) => {
-		const categories = chat.relationshipTimeline.map(period => period.month);
-		const series = [{
-			name: "You",
-			data: chat.relationshipTimeline.map(period => period.userMessages)
-		}, {
-			name: "Them",
-			data: chat.relationshipTimeline.map(period => period.otherMessages)
-		}];
+	// Chart options are now encapsulated in their respective components.
 
-		return {
-			series: series,
-			chart: {
-				type: 'bar',
-				height: 350,
-				stacked: true,
-				toolbar: { show: false }
-			},
-			xaxis: {
-				categories: categories,
-				title: { text: 'Month' }
-			},
-			yaxis: {
-				title: { text: 'Message Count' }
-			},
-			title: {
-				text: `Relationship Timeline - ${chat.chatName}`,
-				align: 'center'
-			},
-			legend: {
-				position: 'top'
-			}
-		};
-	};
-
-	$: conversationBalanceOptions = (chat: ChatAnalytics) => {
-		return {
-			series: [chat.conversationBalance.messageRatio, 1],
-			chart: {
-				type: 'donut',
-				height: 350
-			},
-			labels: ['You', 'Them'],
-			title: {
-				text: `Conversation Balance - ${chat.chatName}`,
-				align: 'center'
-			},
-			legend: {
-				position: 'bottom'
-			}
-		};
-	};
-
-	$: responseTimeStatsOptions = (stats: any, userName: string) => {
-		const series = [
-			{
-				name: 'Response Time',
-				data: [
-					stats.average,
-					stats.median,
-					stats.fastest,
-					stats.slowest
-				]
-			}
-		];
-		return {
-			series: series,
-			chart: {
-				type: 'bar',
-				height: 350,
-				toolbar: { show: false }
-			},
-			xaxis: {
-				categories: ['Average', 'Median', 'Fastest', 'Slowest'],
-				title: { text: 'Metric' }
-			},
-			yaxis: {
-				title: { text: 'Response Time (seconds)' }
-			},
-			title: {
-				text: `Response Time Stats - ${userName}`,
-				align: 'center'
-			}
-		};
-	};
 
 	$: activityHeatmapOptions = (data: { [key: string]: number }, type: 'hourly' | 'daily') => {
 		const series = [{
@@ -603,7 +534,8 @@
 								<div class="user-top-words">
 									<h5>Top Words:</h5>
 									<div class="word-tags">
-										{#each user.topWords.slice(0, 10) as { word, count }}
+										<!-- --- UPDATED: Use the new state variable for the limit --- -->
+										{#each user.topWords.slice(0, wordsPerUserLimit) as { word, count }}
 											<span class="word-tag">{word} ({count})</span>
 										{/each}
 									</div>
@@ -693,44 +625,110 @@
 			
 			<!-- Conversation Balance for each chat -->
 			{#each analytics as chat}
-				{#if chat.userMessages > 0 && chat.otherMessages > 0}
-					<div class="chart-wrapper">
-						<Chart options={conversationBalanceOptions(chat)} />
-					</div>
-				{/if}
+				<ConversationBalance {chat} />
 			{/each}
 			<!-- Global Response Time Stats -->
 			{#if analytics.length > 0 && analytics[0].globalResponseTimeStats.totalResponses > 0}
-				<div class="chart-wrapper">
-					<Chart options={responseTimeStatsOptions(analytics[0].globalResponseTimeStats, "Global")} />
-				</div>
+				<ResponseTimeStats stats={analytics[0].globalResponseTimeStats} userName={"Global"} />
 			{/if}
 
 			<!-- Individual Response Time Stats for top users -->
 			{#each allUserStats.slice(0, 3) as user}
 				{#if user.responseTimeStats && user.responseTimeStats.totalResponses > 5}
-					<div class="chart-wrapper">
-						<Chart options={responseTimeStatsOptions(user.responseTimeStats, user.sender)} />
-					</div>
+					<ResponseTimeStats stats={user.responseTimeStats} userName={user.sender} />
 				{/if}
 			{/each}
 
 			<!-- Relationship Timeline for each chat -->
 			{#each analytics as chat}
-				{#if chat.relationshipTimeline.length > 1}
-					<div class="chart-wrapper">
-						<Chart options={relationshipTimelineOptions(chat)} />
-					</div>
-				{/if}
+				<RelationshipTimeline {chat} />
 			{/each}
 		</section>
 
 		<!-- Word Analysis -->
 		<section class="words-section">
 			<h2>Word Analysis</h2>
+
+			<!-- --- ADDED: Configuration Section --- -->
+			<div class="configuration-section">
+				<div class="config-grid">
+					<div class="config-item">
+						<label for="wordCloudLimit">
+							Word Cloud Limit: <strong>{wordCloudLimit} words</strong>
+						</label>
+						<input
+							type="range"
+							id="wordCloudLimit"
+							min="50"
+							max="500"
+							step="10"
+							bind:value={wordCloudLimit}
+						/>
+					</div>
+					<div class="config-item">
+						<label for="wordsPerUserLimit">
+							Top Words Per User: <strong>{wordsPerUserLimit} words</strong>
+						</label>
+						<input
+							type="range"
+							id="wordsPerUserLimit"
+							min="5"
+							max="50"
+							step="1"
+							bind:value={wordsPerUserLimit}
+						/>
+					</div>
+					<!-- --- ADDED: Radio buttons for scaling --- -->
+					<div class="config-item">
+						<label>
+							Word Cloud Scaling
+						</label>
+						<div class="scale-options">
+							<label>
+								<input type="radio" bind:group={wordCloudScale} value="sqrt" />
+								<span>Balanced (sqrt)</span>
+							</label>
+							<label>
+								<input type="radio" bind:group={wordCloudScale} value="linear" />
+								<span>Dramatic (linear)</span>
+							</label>
+							<label>
+								<input type="radio" bind:group={wordCloudScale} value="log" />
+								<span>Subtle (log)</span>
+							</label>
+						</div>
+					</div>
+					<div class="config-item">
+						<label>Color Scheme</label>
+						<div class="scale-options">
+							<label><input type="radio" bind:group={wordCloudColorScheme} value="category10" /><span>Default</span></label>
+							<label><input type="radio" bind:group={wordCloudColorScheme} value="accent" /><span>Accent</span></label>
+							<label><input type="radio" bind:group={wordCloudColorScheme} value="paired" /><span>Paired</span></label>
+							<label><input type="radio" bind:group={wordCloudColorScheme} value="spectral" /><span>Spectral</span></label>
+						</div>
+					</div>
+				</div>
+			</div>
+
 			<div class="words-container">
 				<div class="chart-wrapper">
-					<WordCloud words={topWordsList} />
+					<!-- --- MODIFIED: Pass the scale prop to the component --- -->
+					<WordCloud words={topWordsList} scale={wordCloudScale} colorScheme={wordCloudColorScheme}/>
+				</div>
+			</div>
+		</section>
+
+		<!-- Emoji Analysis -->
+		<section class="emoji-analysis">
+			<h2>Emoji Analysis</h2>
+			<div class="charts-grid">
+				<div class="chart-wrapper">
+					<h3>Most Used Emojis</h3>
+					<TopEmojis {emojiStats} />
+				</div>
+				<div class="chart-wrapper">
+					<h3>Emoji Cloud</h3>
+					<EmojiCloud {emojiStats} />
 				</div>
 			</div>
 		</section>
@@ -1252,14 +1250,60 @@
 	}
 
 	h2, h3 {
-		color: #333;
-		margin-bottom: 1rem;
-	}
-
-	@media (max-width: 768px) {
-		.words-container {
-			grid-template-columns: 1fr;
+			color: #333;
+			margin-bottom: 1rem;
 		}
+	
+		/* --- ADDED: Styles for the new configuration section --- */
+		.configuration-section {
+			background: #f8f9fa;
+			border-radius: 8px;
+			padding: 1rem 1.5rem;
+			margin-bottom: 2rem;
+			border: 1px solid #e9ecef;
+		}
+	
+		.config-grid {
+			display: grid;
+			grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); /* Adjusted min-width */
+			gap: 1.5rem;
+			align-items: center;
+		}
+	
+		.config-item {
+			display: flex;
+			flex-direction: column;
+		}
+	
+		.config-item label {
+			font-size: 0.9rem;
+			color: #495057;
+			margin-bottom: 0.5rem;
+		}
+	
+		.config-item input[type="range"] {
+			width: 100%;
+			cursor: pointer;
+		}
+	
+		/* --- ADDED: Styles for the new scale options --- */
+		.scale-options {
+			display: flex;
+			gap: 1rem;
+			margin-top: 0.25rem;
+		}
+		.scale-options label {
+			display: flex;
+			align-items: center;
+			gap: 0.25rem;
+			font-size: 0.9rem;
+			cursor: pointer;
+		}
+	
+		@media (max-width: 768px) {
+			.words-container {
+				grid-template-columns: 1fr;
+			}
 		
 		.charts-grid {
 			grid-template-columns: 1fr;

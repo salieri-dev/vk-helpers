@@ -683,7 +683,7 @@ function calculateAnalytics(chatId: string, chatName: string, messages: Message[
 
 	const topWords = Object.entries(wordCounts)
 		.sort(([,a], [,b]) => b - a)
-		.slice(0, 20)
+		.slice(0, 200) // Increased limit for a denser word cloud
 		.map(([word, count]) => ({ word, count }));
 
 	// Calculate per-user statistics
@@ -787,7 +787,7 @@ function calculateAnalytics(chatId: string, chatName: string, messages: Message[
 
 		user.topWords = Object.entries(userWordCounts)
 			.sort(([,a], [,b]) => b - a)
-			.slice(0, 10)
+			.slice(0, 200)
 			.map(([word, count]) => ({ word, count, userWordCounts: userWordCounts }));
 
 		return { ...user, userWordCounts };
