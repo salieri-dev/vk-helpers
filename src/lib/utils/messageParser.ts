@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
 import { decodeWindows1251 } from '$lib/utils/encoding';
+import { parseVkDateString } from '$lib/utils/dateParser';
 import stopwords from 'stopwords-ru';
 
 export interface Message {
@@ -283,7 +284,7 @@ function parseMessagesFromHtml(htmlContent: string, fileName: string = 'Unknown'
 			}
 
 			// Extract timestamp
-			const timestamp = parseVkTimestamp(headerText);
+			const timestamp = parseVkDateString(headerText);
 			// console.log(`🔍 Parsed timestamp for message ${id}:`, timestamp);
 			
 			// Extract message content and attachment information separately
@@ -373,61 +374,6 @@ function extractChatName(htmlContent: string): string | null {
 	return null;
 }
 
-function parseVkTimestamp(headerText: string): Date | null {
-	// console.log(`🔍 parseVkTimestamp attempting to parse: "${headerText}"`);
-	
-	// Extract date from various formats:
-	// "Наталья Абельдяева, 13 июн 2019 в 13:30:27"
-	// "Вы, 13 июн 2019 в 13:29:17"
-	// "OZON, 24 мая 2025 в 21:20:28"
-	
-	const dateMatch = headerText.match(/(\d{1,2})\s+([а-яё]+)\s+(\d{4})\s+в\s+(\d{1,2}):(\d{2}):(\d{2})/i);
-	if (!dateMatch) {
-		// console.log(`❌ No date match found for: "${headerText}"`);
-		return null;
-	}
-
-	const [, day, monthName, year, hour, minute, second] = dateMatch;
-	// console.log(`🔍 Parsed date parts: day=${day}, month=${monthName}, year=${year}, time=${hour}:${minute}:${second}`);
-	
-	// Russian month names to numbers (including full forms)
-	const months: { [key: string]: number } = {
-		'янв': 0, 'января': 0,
-		'фев': 1, 'февраля': 1,
-		'мар': 2, 'марта': 2,
-		'апр': 3, 'апреля': 3,
-		'май': 4, 'мая': 4,
-		'июн': 5, 'июня': 5,
-		'июл': 6, 'июля': 6,
-		'авг': 7, 'августа': 7,
-		'сен': 8, 'сентября': 8,
-		'окт': 9, 'октября': 9,
-		'ноя': 10, 'ноября': 10,
-		'дек': 11, 'декабря': 11
-	};
-
-	const monthNumber = months[monthName.toLowerCase()];
-	if (monthNumber === undefined) {
-		// console.log(`❌ Unknown month name: "${monthName}"`);
-		return null;
-	}
-
-	try {
-		const date = new Date(
-			parseInt(year),
-			monthNumber,
-			parseInt(day),
-			parseInt(hour),
-			parseInt(minute),
-			parseInt(second)
-		);
-		// console.log(`✅ Successfully parsed date: ${date.toISOString()}`);
-		return date;
-	} catch (error) {
-		// console.log(`❌ Error creating date:`, error);
-		return null;
-	}
-}
 
 function calculateResponseTimes(messages: Message[], currentUserId: string): ResponseTimeStats {
 	const responseTimes: number[] = [];

@@ -1,4 +1,5 @@
 import { decodeWindows1251 } from './encoding';
+import { parseVkDateStringWithFallback } from './dateParser';
 import type { ArchiveData } from '$lib/stores/archive';
 import JSZip from 'jszip';
 
@@ -45,7 +46,7 @@ export function extractImagesFromHtml(htmlContent: string, chatName: string, cha
 			// Extract timestamp and sender from message header
 			const headerElement = messageElement.querySelector('.message__header');
 			const headerText = headerElement?.textContent || '';
-			const timestamp = parseMessageTimestamp(headerText);
+			const timestamp = parseVkDateStringWithFallback(headerText);
 			// Extract sender name from header text (format: "Name, date...")
 			const senderName = headerText.split(',')[0]?.trim() || undefined;
 			const senderId = undefined; // VK doesn't expose user IDs in HTML
@@ -206,48 +207,6 @@ function isImageUrl(url: string): boolean {
 	return isVkCdn && (imageExtensions.test(url) || vkImagePatterns.test(url));
 }
 
-/**
- * Parse timestamp from VK message header text
- */
-function parseMessageTimestamp(headerText: string): Date {
-	// Extract date from VK header format: "Имя Пользователя, 13 июн 2019 в 13:30:27"
-	const dateMatch = headerText.match(/(\d{1,2})\s+([а-яё]+)\s+(\d{4})\s+в\s+(\d{1,2}):(\d{2}):(\d{2})/i);
-	
-	if (dateMatch) {
-		const [, day, monthName, year, hour, minute, second] = dateMatch;
-		
-		// Russian month names to numbers
-		const months: { [key: string]: number } = {
-			'янв': 0, 'января': 0,
-			'фев': 1, 'февраля': 1,
-			'мар': 2, 'марта': 2,
-			'апр': 3, 'апреля': 3,
-			'май': 4, 'мая': 4,
-			'июн': 5, 'июня': 5,
-			'июл': 6, 'июля': 6,
-			'авг': 7, 'августа': 7,
-			'сен': 8, 'сентября': 8,
-			'окт': 9, 'октября': 9,
-			'ноя': 10, 'ноября': 10,
-			'дек': 11, 'декабря': 11
-		};
-		
-		const monthNumber = months[monthName.toLowerCase()];
-		if (monthNumber !== undefined) {
-			return new Date(
-				parseInt(year),
-				monthNumber,
-				parseInt(day),
-				parseInt(hour),
-				parseInt(minute),
-				parseInt(second)
-			);
-		}
-	}
-	
-	// Fallback to current date if parsing fails
-	return new Date();
-}
 
 /**
  * Generate a unique filename for an image

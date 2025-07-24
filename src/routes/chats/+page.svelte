@@ -1,9 +1,12 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { slide } from 'svelte/transition';
 	import { goto } from '$app/navigation';
 	import { archiveStore } from '$lib/stores/archive';
 	import type { ChatInfo } from '$lib/stores/archive';
+	import SelectionControls from '$lib/components/SelectionControls.svelte';
+	import Pagination from '$lib/components/Pagination.svelte';
+	import ActionToolbar from '$lib/components/ActionToolbar.svelte';
+	import StatusView from '$lib/components/StatusView.svelte';
 
 	let archiveData: typeof $archiveStore;
 	let selectedChats: Set<string> = new Set();
@@ -44,32 +47,24 @@
 		selectedChats = new Set(selectedChats); // Trigger reactivity
 	}
 
-	function selectAll() {
+	function handleSelectPage() {
 		selectedChats = new Set(paginatedChats.map(chat => chat.id));
 	}
 
-	function selectAllFiltered() {
+	function handleSelectAll() {
 		selectedChats = new Set(filteredChats.map(chat => chat.id));
 	}
 
-	function selectNone() {
+	function handleClearSelection() {
 		selectedChats = new Set();
 	}
 
-	function goToPage(page: number) {
-		currentPage = Math.max(1, Math.min(page, totalPages));
+	function handlePageChange(event: CustomEvent) {
+		currentPage = event.detail.page;
 	}
 
-	function nextPage() {
-		if (currentPage < totalPages) {
-			currentPage++;
-		}
-	}
-
-	function prevPage() {
-		if (currentPage > 1) {
-			currentPage--;
-		}
+	function handleSearch(event: CustomEvent) {
+		searchQuery = event.detail.query;
 	}
 
 	// Reset to page 1 when search query changes
@@ -125,103 +120,63 @@
 	</header>
 
 	{#if archiveData?.isLoading}
-		<div class="loading">
-			<div class="spinner"></div>
-			<p>Processing your archive...</p>
-		</div>
+		<StatusView
+			status="loading"
+			title="Processing Archive"
+			message="Processing your archive..."
+			spinnerSize="medium"
+		/>
 	{:else if archiveData?.error}
-		<div class="error">
-			<p>Error: {archiveData.error}</p>
-			<button on:click={goBack}>Go Back</button>
-		</div>
+		<StatusView
+			status="error"
+			title="Error Processing Archive"
+			message="Error: {archiveData.error}"
+			buttonText="Go Back"
+			on:action={goBack}
+		/>
 	{:else if archiveData?.chats.length > 0}
-		<section class="controls">
-			<div class="search">
-				<input
-					type="text"
-					placeholder="Search chats..."
-					bind:value={searchQuery}
-				/>
-			</div>
-			<div class="selection-controls">
-				<button on:click={selectAll}>Select Page</button>
-				<button on:click={selectAllFiltered}>Select All ({filteredChats.length})</button>
-				<button on:click={selectNone}>Clear Selection</button>
-				<span class="selected-count">
-					{selectedChats.size} selected
-				</span>
-			</div>
-			{#if totalPages > 1}
-				<div class="pagination-info">
-					<span>Page {currentPage} of {totalPages} ({filteredChats.length} total chats)</span>
-				</div>
-			{/if}
-		</section>
+		<SelectionControls
+			bind:searchQuery
+			selectedCount={selectedChats.size}
+			totalFiltered={filteredChats.length}
+			{totalPages}
+			{currentPage}
+			placeholder="Search chats..."
+			on:selectPage={handleSelectPage}
+			on:selectAll={handleSelectAll}
+			on:clearSelection={handleClearSelection}
+			on:search={handleSearch}
+		/>
 
-		{#if selectedChats.size > 0}
-			<section class="action-controls" transition:slide={{ duration: 300 }}>
-				<div class="action-header">
-					<h3>Selected Actions</h3>
-					<span class="selection-summary">{selectedChats.size} chat{selectedChats.size !== 1 ? 's' : ''} selected</span>
-				</div>
-				<div class="action-buttons">
-					<button
-						class="action-btn analyze-btn"
-						on:click={analyzeSelected}
-						aria-label="Analyze {selectedChats.size} selected chats"
-					>
-						<span class="btn-icon">📊</span>
-						<span class="btn-text">Analyze Selected</span>
-						<span class="btn-count">({selectedChats.size})</span>
-					</button>
-					<button
-						class="action-btn download-btn"
-						on:click={downloadImages}
-						aria-label="Download images from {selectedChats.size} selected chats"
-					>
-						<span class="btn-icon">📸</span>
-						<span class="btn-text">Download Images</span>
-						<span class="btn-count">({selectedChats.size})</span>
-					</button>
-				</div>
-			</section>
-		{/if}
+		<ActionToolbar
+			selectedCount={selectedChats.size}
+			itemType="chats"
+		>
+			<button
+				class="action-btn analyze-btn"
+				on:click={analyzeSelected}
+				aria-label="Analyze {selectedChats.size} selected chats"
+			>
+				<span class="btn-icon">📊</span>
+				<span class="btn-text">Analyze Selected</span>
+				<span class="btn-count">({selectedChats.size})</span>
+			</button>
+			<button
+				class="action-btn download-btn"
+				on:click={downloadImages}
+				aria-label="Download images from {selectedChats.size} selected chats"
+			>
+				<span class="btn-icon">📸</span>
+				<span class="btn-text">Download Images</span>
+				<span class="btn-count">({selectedChats.size})</span>
+			</button>
+		</ActionToolbar>
 
-		{#if totalPages > 1}
-			<section class="pagination">
-				<button
-					class="pagination-btn"
-					on:click={prevPage}
-					disabled={currentPage <= 1}
-				>
-					← Previous
-				</button>
-				
-				<div class="page-numbers">
-					{#each Array.from({length: Math.min(5, totalPages)}, (_, i) => {
-						const start = Math.max(1, currentPage - 2);
-						const end = Math.min(totalPages, start + 4);
-						return start + i;
-					}).filter(p => p <= totalPages) as page}
-						<button
-							class="page-number"
-							class:active={page === currentPage}
-							on:click={() => goToPage(page)}
-						>
-							{page}
-						</button>
-					{/each}
-				</div>
-				
-				<button
-					class="pagination-btn"
-					on:click={nextPage}
-					disabled={currentPage >= totalPages}
-				>
-					Next →
-				</button>
-			</section>
-		{/if}
+		<Pagination
+			{currentPage}
+			{totalPages}
+			on:pageChange={handlePageChange}
+		/>
 
 		<section class="chat-grid">
 			{#each paginatedChats as chat (chat.id)}
@@ -248,10 +203,13 @@
 			{/each}
 		</section>
 	{:else}
-		<div class="no-chats">
-			<p>No chats found in the archive.</p>
-			<button on:click={goBack}>Go Back</button>
-		</div>
+		<StatusView
+			status="empty"
+			title="No Chats Found"
+			message="No chats found in the archive."
+			buttonText="Go Back"
+			on:action={goBack}
+		/>
 	{/if}
 </main>
 
@@ -472,157 +430,4 @@
 		font-weight: 500;
 	}
 
-	/* Action Controls Section */
-	.action-controls {
-		background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
-		border: 2px solid #4a90e2;
-		border-radius: 12px;
-		padding: 1.5rem;
-		margin-bottom: 1.5rem;
-		box-shadow: 0 4px 12px rgba(74, 144, 226, 0.15);
-		position: relative;
-		overflow: hidden;
-	}
-
-	.action-controls::before {
-		content: '';
-		position: absolute;
-		top: 0;
-		left: 0;
-		right: 0;
-		height: 3px;
-		background: linear-gradient(90deg, #4a90e2, #7b1fa2, #4a90e2);
-		animation: shimmer 2s ease-in-out infinite;
-	}
-
-	@keyframes shimmer {
-		0%, 100% { opacity: 0.7; }
-		50% { opacity: 1; }
-	}
-
-	.action-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 1rem;
-		padding-bottom: 0.5rem;
-		border-bottom: 1px solid rgba(74, 144, 226, 0.2);
-	}
-
-	.action-header h3 {
-		margin: 0;
-		color: #2c5aa0;
-		font-size: 1.1rem;
-		font-weight: 600;
-	}
-
-	.selection-summary {
-		color: #666;
-		font-size: 0.9rem;
-		font-weight: 500;
-	}
-
-	.action-buttons {
-		display: flex;
-		gap: 1rem;
-		justify-content: center;
-		flex-wrap: wrap;
-	}
-
-	.action-btn {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 0.875rem 1.5rem;
-		border: none;
-		border-radius: 8px;
-		font-size: 1rem;
-		font-weight: 600;
-		cursor: pointer;
-		transition: all 0.2s ease;
-		min-width: 200px;
-		justify-content: center;
-		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-	}
-
-	.action-btn:hover {
-		transform: translateY(-2px);
-		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
-	}
-
-	.action-btn:active {
-		transform: translateY(0);
-	}
-
-	.analyze-btn {
-		background: linear-gradient(135deg, #4a90e2 0%, #357abd 100%);
-		color: white;
-	}
-
-	.analyze-btn:hover {
-		background: linear-gradient(135deg, #357abd 0%, #2c5aa0 100%);
-	}
-
-	.download-btn {
-		background: linear-gradient(135deg, #28a745 0%, #218838 100%);
-		color: white;
-	}
-
-	.download-btn:hover {
-		background: linear-gradient(135deg, #218838 0%, #1e7e34 100%);
-	}
-
-	.btn-icon {
-		font-size: 1.2rem;
-	}
-
-	.btn-text {
-		font-weight: 600;
-	}
-
-	.btn-count {
-		background: rgba(255, 255, 255, 0.2);
-		padding: 0.25rem 0.5rem;
-		border-radius: 12px;
-		font-size: 0.85rem;
-		font-weight: 700;
-	}
-
-	/* Responsive Design */
-	@media (max-width: 600px) {
-		.action-buttons {
-			flex-direction: column;
-		}
-		
-		.action-btn {
-			min-width: 100%;
-		}
-		
-		.action-header {
-			flex-direction: column;
-			gap: 0.5rem;
-			text-align: center;
-		}
-	}
-
-	@media (max-width: 480px) {
-		.action-controls {
-			padding: 1rem;
-			margin-bottom: 1rem;
-		}
-		
-		.btn-text {
-			display: none;
-		}
-		
-		.action-btn {
-			min-width: auto;
-			padding: 0.75rem 1rem;
-		}
-		
-		.action-buttons {
-			flex-direction: row;
-			justify-content: space-around;
-		}
-	}
 </style>

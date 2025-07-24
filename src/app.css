@@ -99,6 +99,93 @@ input:focus, select:focus, textarea:focus {
 .loading {
 	animation: pulse 1.5s ease-in-out infinite;
 }
+/* Global spinner styles */
+.spinner {
+	width: 40px;
+	height: 40px;
+	border: 4px solid #f3f3f3;
+	border-top: 4px solid var(--primary-color);
+	border-radius: 50%;
+	animation: spin 1s linear infinite;
+	margin: 0 auto;
+}
+
+.spinner-large {
+	width: 60px;
+	height: 60px;
+	border: 4px solid #f3f3f3;
+	border-top: 4px solid var(--primary-color);
+	border-radius: 50%;
+	animation: spin 1s linear infinite;
+	margin: 0 auto;
+}
+
+.spinner-small {
+	width: 24px;
+	height: 24px;
+	border: 2px solid #f3f3f3;
+	border-top: 2px solid var(--primary-color);
+	border-radius: 50%;
+	animation: spin 1s linear infinite;
+	margin: 0 auto;
+}
+
+/* Global status view styles */
+.status-container {
+	text-align: center;
+	padding: 3rem;
+	background: #f8f9fa;
+	border-radius: 8px;
+	margin: 2rem 0;
+}
+
+.status-container.loading {
+	background: rgba(74, 144, 226, 0.05);
+}
+
+.status-container.error {
+	background: rgba(244, 67, 54, 0.05);
+	border: 1px solid rgba(244, 67, 54, 0.2);
+}
+
+.status-container.empty {
+	background: #f8f9fa;
+}
+
+.status-title {
+	margin: 1rem 0 0.5rem 0;
+	color: var(--text-color);
+	font-size: 1.5rem;
+}
+
+.status-message {
+	color: var(--text-muted);
+	margin-bottom: 1.5rem;
+	line-height: 1.6;
+}
+
+.status-button {
+	background: var(--primary-color);
+	color: white;
+	border: none;
+	padding: 0.8rem 2rem;
+	border-radius: 6px;
+	cursor: pointer;
+	font-size: 1rem;
+	transition: background-color 0.2s ease;
+}
+
+.status-button:hover {
+	background: var(--secondary-color);
+}
+
+.status-button.secondary {
+	background: #6c757d;
+}
+
+.status-button.secondary:hover {
+	background: #5a6268;
+}
 
 /* Utility classes */
 .text-center { text-align: center; }
@@ -130,33 +217,4 @@ input:focus, select:focus, textarea:focus {
 		padding-left: 1rem !important;
 		padding-right: 1rem !important;
 	}
-}
-
-/* PWA install prompt styling */
-.install-prompt {
-	position: fixed;
-	bottom: 20px;
-	left: 50%;
-	transform: translateX(-50%);
-	background: var(--primary-color);
-	color: white;
-	padding: 1rem 1.5rem;
-	border-radius: 8px;
-	box-shadow: var(--card-shadow);
-	display: flex;
-	align-items: center;
-	gap: 1rem;
-	z-index: 1000;
-}
-
-.install-prompt button {
-	background: rgba(255, 255, 255, 0.2);
-	color: white;
-	border: 1px solid rgba(255, 255, 255, 0.3);
-	padding: 0.5rem 1rem;
-	border-radius: 4px;
-}
-
-.install-prompt button:hover {
-	background: rgba(255, 255, 255, 0.3);
 }

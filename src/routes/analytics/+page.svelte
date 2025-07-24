@@ -7,6 +7,7 @@
 	import StatsCard from '$lib/components/StatsCard.svelte';
 	import TimelineChart from '$lib/components/TimelineChart.svelte';
 	import Chart from '$lib/components/Chart.svelte'; // Import your new wrapper
+	import ActivityHeatmap from '$lib/components/ActivityHeatmap.svelte';
 	import stopwords from 'stopwords-ru';
 	import WordCloud from '$lib/components/WordCloud.svelte';
 	import ConversationBalance from '$lib/components/ConversationBalance.svelte';
@@ -15,6 +16,7 @@
 	import { getEmojiStats } from '$lib/utils/emojiParser';
 	import EmojiCloud from '$lib/components/EmojiCloud.svelte';
 	import TopEmojis from '$lib/components/TopEmojis.svelte';
+	import StatusView from '$lib/components/StatusView.svelte';
 
 	let emojiStats: Map<string, number> = new Map();
 	let analytics: ChatAnalytics[] = [];
@@ -225,62 +227,7 @@
 		.sort(([,a], [,b]) => b - a)
 		.slice(0, wordCloudLimit) // Use the configurable limit
 		.map(([word, count]) => ({ word, count }));
-	// Chart options are now encapsulated in their respective components.
-
-
-	$: activityHeatmapOptions = (data: { [key: string]: number }, type: 'hourly' | 'daily') => {
-		const series = [{
-			name: 'Messages',
-			data: Object.entries(data).map(([key, value]) => ({ x: key, y: value }))
-		}];
-
-		return {
-			series: series,
-			chart: {
-				type: 'heatmap',
-				height: 350,
-				toolbar: { show: false }
-			},
-			plotOptions: {
-				heatmap: {
-					shadeIntensity: 0.5,
-					colorScale: {
-						ranges: [{
-							from: 0,
-							to: 10,
-							name: 'low',
-							color: '#00A100'
-						},
-						{
-							from: 11,
-							to: 50,
-							name: 'medium',
-							color: '#128FD9'
-						},
-						{
-							from: 51,
-							to: 100,
-							name: 'high',
-							color: '#FFB200'
-						},
-						{
-							from: 101,
-							to: 1000,
-							name: 'extreme',
-							color: '#FF0000'
-						}]
-					}
-				}
-			},
-			dataLabels: {
-				enabled: false
-			},
-			title: {
-				text: `Activity Heatmap - ${type === 'hourly' ? 'By Hour' : 'By Day'}`,
-				align: 'center'
-			}
-		};
-	};
+	// Chart data is now processed directly for D3 components
 </script>
 
 <svelte:head>
@@ -300,33 +247,37 @@
 </header>
 
 	{#if isLoading}
-		<div class="loading">
-			<div class="spinner"></div>
-			<h3>Analyzing Messages</h3>
-			<p>{processingStep || 'Preparing to analyze messages...'}</p>
-			{#if totalCount > 0}
-				<div class="progress-bar">
-					<div class="progress-fill" style="width: {Math.min((Math.floor(processedCount) / totalCount) * 100, 100)}%"></div>
-				</div>
-				<small>Processing {Math.floor(processedCount)} of {totalCount} chats</small>
-			{:else}
-				<small>This may take a few moments for large archives</small>
-			{/if}
+		<StatusView
+			status="loading"
+			title="Analyzing Messages"
+			message={processingStep || 'Preparing to analyze messages...'}
+			spinnerSize="large"
+			showProgressBar={totalCount > 0}
+			progress={Math.floor(processedCount)}
+			progressTotal={totalCount}
+			progressText={totalCount > 0 ? `Processing ${Math.floor(processedCount)} of ${totalCount} chats` : 'This may take a few moments for large archives'}
+		>
 			<div class="performance-warning">
 				<p><strong>⚠️ Performance Notice:</strong></p>
 				<p>Large archives may cause the tab to become temporarily unresponsive during processing. This is normal - please wait for completion.</p>
 			</div>
-		</div>
+		</StatusView>
 	{:else if error}
-		<div class="error">
-			<p>Error: {error}</p>
-			<button on:click={goBack}>Go Back</button>
-		</div>
+		<StatusView
+			status="error"
+			title="Analysis Error"
+			message="Error: {error}"
+			buttonText="Go Back"
+			on:action={goBack}
+		/>
 	{:else if analytics.length === 0}
-		<div class="no-data">
-			<p>No data found for the selected chats.</p>
-			<button on:click={goBack}>Go Back</button>
-		</div>
+		<StatusView
+			status="empty"
+			title="No Data Found"
+			message="No data found for the selected chats."
+			buttonText="Go Back"
+			on:action={goBack}
+		/>
 	{:else}
 		<!-- Overview Stats -->
 		<section class="overview">
@@ -605,10 +556,18 @@
 			<h2>Activity Patterns</h2>
 			<div class="charts-grid">
 				<div class="chart-wrapper">
-					<Chart options={activityHeatmapOptions(combinedHourActivity, 'hourly')} />
+					<ActivityHeatmap
+						data={combinedHourActivity}
+						type="hourly"
+						title="Hourly Activity Pattern"
+					/>
 				</div>
 				<div class="chart-wrapper">
-					<Chart options={activityHeatmapOptions(combinedDayActivity, 'daily')} />
+					<ActivityHeatmap
+						data={combinedDayActivity}
+						type="daily"
+						title="Daily Activity Pattern"
+					/>
 				</div>
 			</div>
 		</section>
@@ -680,9 +639,9 @@
 					</div>
 					<!-- --- ADDED: Radio buttons for scaling --- -->
 					<div class="config-item">
-						<label>
+						<div class="config-label">
 							Word Cloud Scaling
-						</label>
+						</div>
 						<div class="scale-options">
 							<label>
 								<input type="radio" bind:group={wordCloudScale} value="sqrt" />
@@ -699,7 +658,7 @@
 						</div>
 					</div>
 					<div class="config-item">
-						<label>Color Scheme</label>
+						<div class="config-label">Color Scheme</div>
 						<div class="scale-options">
 							<label><input type="radio" bind:group={wordCloudColorScheme} value="category10" /><span>Default</span></label>
 							<label><input type="radio" bind:group={wordCloudColorScheme} value="accent" /><span>Accent</span></label>
@@ -769,65 +728,6 @@
 		gap: 1rem;
 	}
 
-	.export-buttons {
-		display: flex;
-		gap: 0.5rem;
-	}
-
-	.export-button, .settings-button {
-		background: #4a90e2;
-		color: white;
-		border: none;
-		padding: 0.75rem 1rem;
-		border-radius: 6px;
-		cursor: pointer;
-		font-size: 0.8rem;
-		font-weight: 500;
-		transition: all 0.2s ease;
-		white-space: nowrap;
-		display: flex;
-		align-items: center;
-		gap: 0.3rem;
-	}
-
-	.settings-button {
-		padding: 0.75rem 1.5rem;
-		gap: 0.5rem;
-		position: relative;
-	}
-
-	.changes-indicator {
-		position: absolute;
-		top: -2px;
-		right: -2px;
-		background: #ffc107;
-		color: #212529;
-		width: 12px;
-		height: 12px;
-		border-radius: 50%;
-		font-size: 8px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		animation: pulse 2s infinite;
-	}
-
-	@keyframes pulse {
-		0% { transform: scale(1); opacity: 1; }
-		50% { transform: scale(1.1); opacity: 0.8; }
-		100% { transform: scale(1); opacity: 1; }
-	}
-
-	.export-button:hover:not(:disabled), .settings-button:hover {
-		background: #357abd;
-		transform: translateY(-1px);
-	}
-
-	.export-button:disabled {
-		background: #aaa;
-		cursor: not-allowed;
-		transform: none;
-	}
 
 	.back-button {
 		background: none;
@@ -971,20 +871,6 @@
 		margin-bottom: 3rem;
 	}
 
-	.chat-user-stats {
-		margin-bottom: 2rem;
-		background: white;
-		border: 1px solid #ddd;
-		border-radius: 8px;
-		padding: 1.5rem;
-	}
-
-	.chat-user-stats h3 {
-		color: #4a90e2;
-		margin-bottom: 1.5rem;
-		padding-bottom: 0.5rem;
-		border-bottom: 2px solid #f0f0f0;
-	}
 
 	.users-grid {
 		display: grid;
@@ -1155,66 +1041,8 @@
 		gap: 2rem;
 	}
 
-	.chart-container {
-		background: white;
-		border: 1px solid #ddd;
-		border-radius: 8px;
-		padding: 1.5rem;
-	}
-
 	.words-container {
 		display: block;
-	}
-
-	.top-words-list {
-		background: white;
-		border: 1px solid #ddd;
-		border-radius: 8px;
-		padding: 1.5rem;
-	}
-
-	.words-horizontal {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-		gap: 0.75rem;
-		margin-top: 1rem;
-	}
-
-	.word-item {
-		display: flex;
-		align-items: center;
-		background: #f8f9fa;
-		border: 1px solid #e9ecef;
-		border-radius: 6px;
-		padding: 0.5rem 0.75rem;
-		gap: 0.5rem;
-	}
-
-	.word-rank {
-		background: #4a90e2;
-		color: white;
-		border-radius: 50%;
-		width: 20px;
-		height: 20px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		font-size: 0.75rem;
-		font-weight: 500;
-		flex-shrink: 0;
-	}
-
-	.word {
-		flex: 1;
-		font-weight: 500;
-		color: #495057;
-	}
-
-	.count {
-		color: #6c757d;
-		font-weight: 500;
-		font-size: 0.9rem;
-		flex-shrink: 0;
 	}
 
 	/* User chat tags styles */
@@ -1280,6 +1108,12 @@
 			color: #495057;
 			margin-bottom: 0.5rem;
 		}
+
+		.config-label {
+			font-size: 0.9rem;
+			color: #495057;
+			margin-bottom: 0.5rem;
+		}
 	
 		.config-item input[type="range"] {
 			width: 100%;
@@ -1320,15 +1154,6 @@
 			justify-content: space-between;
 		}
 		
-		.export-buttons {
-			flex: 1;
-			justify-content: flex-start;
-		}
-		
-		.export-button {
-			padding: 0.5rem 0.75rem;
-			font-size: 0.75rem;
-		}
 	}
 	.chart-wrapper {
 		background: white;

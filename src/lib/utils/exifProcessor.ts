@@ -141,54 +141,6 @@ export async function batchAddExifMetadata(
 	return results;
 }
 
-/**
- * Extract message information from existing EXIF data
- * @param imageBlob - Image blob to read EXIF from
- * @returns Extracted VK message info or null
- */
-export async function extractVkInfoFromExif(imageBlob: Blob): Promise<{
-	chatName?: string;
-	messageId?: string;
-	originalTimestamp?: Date;
-	sourceUrl?: string;
-} | null> {
-	try {
-		if (!imageBlob.type.includes('jpeg') && !imageBlob.type.includes('jpg')) {
-			return null;
-		}
-
-		const dataUrl = await blobToDataUrl(imageBlob);
-		const exifDict = piexif.load(dataUrl);
-		
-		const description = exifDict["0th"][piexif.ImageIFD.ImageDescription];
-		const artist = exifDict["0th"][piexif.ImageIFD.Artist];
-		const dateTime = exifDict["Exif"][piexif.ExifIFD.DateTimeOriginal];
-		
-		if (!description) return null;
-
-		// Parse metadata from description
-		const info: any = {};
-		
-		const chatMatch = description.match(/Chat: ([^|]+)/);
-		if (chatMatch) info.chatName = chatMatch[1].trim();
-		
-		const messageIdMatch = description.match(/VK Message ID: ([^|]+)/);
-		if (messageIdMatch) info.messageId = messageIdMatch[1].trim();
-		
-		const sourceMatch = description.match(/Source: ([^|]+)/);
-		if (sourceMatch) info.sourceUrl = sourceMatch[1].trim();
-		
-		if (dateTime) {
-			info.originalTimestamp = parseExifDate(dateTime);
-		}
-		
-		return Object.keys(info).length > 0 ? info : null;
-
-	} catch (error) {
-		console.warn('Failed to extract VK info from EXIF:', error);
-		return null;
-	}
-}
 
 /**
  * Helper: Convert blob to data URL
@@ -279,30 +231,4 @@ function parseExifDate(exifDate: string): Date {
 function stringToUint8Array(str: string): Uint8Array {
 	const encoder = new TextEncoder();
 	return encoder.encode(str);
-}
-
-/**
- * Verify EXIF data was added correctly (for debugging)
- */
-export async function verifyExifData(imageBlob: Blob): Promise<{
-	hasExif: boolean;
-	dateTime?: string;
-	description?: string;
-	software?: string;
-	artist?: string;
-}> {
-	try {
-		const dataUrl = await blobToDataUrl(imageBlob);
-		const exifDict = piexif.load(dataUrl);
-		
-		return {
-			hasExif: true,
-			dateTime: exifDict["Exif"][piexif.ExifIFD.DateTimeOriginal],
-			description: exifDict["0th"][piexif.ImageIFD.ImageDescription],
-			software: exifDict["0th"][piexif.ImageIFD.Software],
-			artist: exifDict["0th"][piexif.ImageIFD.Artist]
-		};
-	} catch (error) {
-		return { hasExif: false };
-	}
 }

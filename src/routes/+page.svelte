@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { archiveStore } from '$lib/stores/archive';
 	import FileUpload from '$lib/components/FileUpload.svelte';
+	import StatusView from '$lib/components/StatusView.svelte';
 
 	// Subscribe to archive store to get loading state
 	$: archiveData = $archiveStore;
@@ -158,11 +159,13 @@
 	{/if}
 
 	{#if archiveData.error}
-		<div class="error-message">
-			<h3>Error Processing Archive</h3>
-			<p>{archiveData.error}</p>
-			<button on:click={() => archiveStore.reset()}>Try Again</button>
-		</div>
+		<StatusView
+			status="error"
+			title="Error Processing Archive"
+			message={archiveData.error}
+			buttonText="Try Again"
+			on:action={() => archiveStore.reset()}
+		/>
 	{/if}
 </main>
 

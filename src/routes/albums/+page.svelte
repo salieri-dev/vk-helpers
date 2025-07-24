@@ -5,6 +5,10 @@
 	import { archiveStore } from '$lib/stores/archive';
 	import { parseAlbumPhotos } from '$lib/utils/albumParser';
 	import type { AlbumInfo, PhotoInfo } from '$lib/stores/archive';
+	import SelectionControls from '$lib/components/SelectionControls.svelte';
+	import Pagination from '$lib/components/Pagination.svelte';
+	import ActionToolbar from '$lib/components/ActionToolbar.svelte';
+	import StatusView from '$lib/components/StatusView.svelte';
 
 	let archiveData: typeof $archiveStore;
 	let selectedAlbums: Set<string> = new Set();
@@ -48,32 +52,24 @@
 		selectedAlbums = new Set(selectedAlbums); // Trigger reactivity
 	}
 
-	function selectAll() {
+	function handleSelectPage() {
 		selectedAlbums = new Set(paginatedAlbums.map(album => album.id));
 	}
 
-	function selectAllFiltered() {
+	function handleSelectAll() {
 		selectedAlbums = new Set(filteredAlbums.map(album => album.id));
 	}
 
-	function selectNone() {
+	function handleClearSelection() {
 		selectedAlbums = new Set();
 	}
 
-	function goToPage(page: number) {
-		currentPage = Math.max(1, Math.min(page, totalPages));
+	function handlePageChange(event: CustomEvent) {
+		currentPage = event.detail.page;
 	}
 
-	function nextPage() {
-		if (currentPage < totalPages) {
-			currentPage++;
-		}
-	}
-
-	function prevPage() {
-		if (currentPage > 1) {
-			currentPage--;
-		}
+	function handleSearch(event: CustomEvent) {
+		searchQuery = event.detail.query;
 	}
 
 	// Reset to page 1 when search query changes
@@ -143,94 +139,55 @@
 	</header>
 
 	{#if archiveData?.isLoading}
-		<div class="loading">
-			<div class="spinner"></div>
-			<p>Processing your archive...</p>
-		</div>
+		<StatusView
+			status="loading"
+			title="Processing Archive"
+			message="Processing your archive..."
+			spinnerSize="medium"
+		/>
 	{:else if archiveData?.error}
-		<div class="error">
-			<p>Error: {archiveData.error}</p>
-			<button on:click={goBack}>Go Back</button>
-		</div>
+		<StatusView
+			status="error"
+			title="Error Processing Archive"
+			message="Error: {archiveData.error}"
+			buttonText="Go Back"
+			on:action={goBack}
+		/>
 	{:else if archiveData?.albums.length > 0}
-		<section class="controls">
-			<div class="search">
-				<input
-					type="text"
-					placeholder="Search albums..."
-					bind:value={searchQuery}
-				/>
-			</div>
-			<div class="selection-controls">
-				<button on:click={selectAll}>Select Page</button>
-				<button on:click={selectAllFiltered}>Select All ({filteredAlbums.length})</button>
-				<button on:click={selectNone}>Clear Selection</button>
-				<span class="selected-count">
-					{selectedAlbums.size} selected
-				</span>
-			</div>
-			{#if totalPages > 1}
-				<div class="pagination-info">
-					<span>Page {currentPage} of {totalPages} ({filteredAlbums.length} total albums)</span>
-				</div>
-			{/if}
-		</section>
+		<SelectionControls
+			bind:searchQuery
+			selectedCount={selectedAlbums.size}
+			totalFiltered={filteredAlbums.length}
+			{totalPages}
+			{currentPage}
+			placeholder="Search albums..."
+			on:selectPage={handleSelectPage}
+			on:selectAll={handleSelectAll}
+			on:clearSelection={handleClearSelection}
+			on:search={handleSearch}
+		/>
 
-		{#if selectedAlbums.size > 0}
-			<section class="action-controls" transition:slide={{ duration: 300 }}>
-				<div class="action-header">
-					<h3>Download Albums</h3>
-					<span class="selection-summary">{selectedAlbums.size} album{selectedAlbums.size !== 1 ? 's' : ''} selected</span>
-				</div>
-				<div class="action-buttons">
-					<button
-						class="action-btn download-btn"
-						on:click={downloadAlbums}
-						aria-label="Download {selectedAlbums.size} selected albums"
-					>
-						<span class="btn-icon">💾</span>
-						<span class="btn-text">Download Selected Albums</span>
-						<span class="btn-count">({selectedAlbums.size})</span>
-					</button>
-				</div>
-			</section>
-		{/if}
+		<ActionToolbar
+			selectedCount={selectedAlbums.size}
+			itemType="albums"
+			title="Download Albums"
+		>
+			<button
+				class="action-btn download-btn"
+				on:click={downloadAlbums}
+				aria-label="Download {selectedAlbums.size} selected albums"
+			>
+				<span class="btn-icon">💾</span>
+				<span class="btn-text">Download Selected Albums</span>
+				<span class="btn-count">({selectedAlbums.size})</span>
+			</button>
+		</ActionToolbar>
 
-		{#if totalPages > 1}
-			<section class="pagination">
-				<button
-					class="pagination-btn"
-					on:click={prevPage}
-					disabled={currentPage <= 1}
-				>
-					← Previous
-				</button>
-				
-				<div class="page-numbers">
-					{#each Array.from({length: Math.min(5, totalPages)}, (_, i) => {
-						const start = Math.max(1, currentPage - 2);
-						const end = Math.min(totalPages, start + 4);
-						return start + i;
-					}).filter(p => p <= totalPages) as page}
-						<button
-							class="page-number"
-							class:active={page === currentPage}
-							on:click={() => goToPage(page)}
-						>
-							{page}
-						</button>
-					{/each}
-				</div>
-				
-				<button
-					class="pagination-btn"
-					on:click={nextPage}
-					disabled={currentPage >= totalPages}
-				>
-					Next →
-				</button>
-			</section>
-		{/if}
+		<Pagination
+			{currentPage}
+			{totalPages}
+			on:pageChange={handlePageChange}
+		/>
 
 		<section class="albums-grid">
 			{#each paginatedAlbums as album (album.id)}
@@ -298,10 +255,13 @@
 			{/each}
 		</section>
 	{:else}
-		<div class="no-albums">
-			<p>No photo albums found in the archive.</p>
-			<button on:click={goBack}>Go Back</button>
-		</div>
+		<StatusView
+			status="empty"
+			title="No Albums Found"
+			message="No photo albums found in the archive."
+			buttonText="Go Back"
+			on:action={goBack}
+		/>
 	{/if}
 </main>
 
@@ -367,197 +327,6 @@
 		100% { transform: rotate(360deg); }
 	}
 
-	.controls {
-		background: #f8f9fa;
-		padding: 1.5rem;
-		border-radius: 8px;
-		margin-bottom: 2rem;
-	}
-
-	.search input {
-		width: 100%;
-		padding: 0.75rem;
-		border: 1px solid #ddd;
-		border-radius: 4px;
-		font-size: 1rem;
-		margin-bottom: 1rem;
-	}
-
-	.selection-controls {
-		display: flex;
-		gap: 1rem;
-		align-items: center;
-		flex-wrap: wrap;
-	}
-
-	.selection-controls button {
-		padding: 0.5rem 1rem;
-		border: 1px solid #4a90e2;
-		background: white;
-		color: #4a90e2;
-		border-radius: 4px;
-		cursor: pointer;
-	}
-
-	.selection-controls button:hover {
-		background: #4a90e2;
-		color: white;
-	}
-
-	.selected-count {
-		color: #666;
-		font-size: 0.9rem;
-	}
-
-	.pagination-info {
-		margin-top: 1rem;
-		text-align: center;
-		color: #666;
-		font-size: 0.9rem;
-	}
-
-	/* Action Controls - same as chats page */
-	.action-controls {
-		background: linear-gradient(135deg, #f3e5f5 0%, #e8f5e8 100%);
-		border: 2px solid #28a745;
-		border-radius: 12px;
-		padding: 1.5rem;
-		margin-bottom: 1.5rem;
-		box-shadow: 0 4px 12px rgba(40, 167, 69, 0.15);
-		position: relative;
-		overflow: hidden;
-	}
-
-	.action-controls::before {
-		content: '';
-		position: absolute;
-		top: 0;
-		left: 0;
-		right: 0;
-		height: 3px;
-		background: linear-gradient(90deg, #28a745, #20c997, #28a745);
-		animation: shimmer 2s ease-in-out infinite;
-	}
-
-	@keyframes shimmer {
-		0%, 100% { opacity: 0.7; }
-		50% { opacity: 1; }
-	}
-
-	.action-header {
-		display: flex;
-		justify-content: space-between;
-		align-items: center;
-		margin-bottom: 1rem;
-		padding-bottom: 0.5rem;
-		border-bottom: 1px solid rgba(40, 167, 69, 0.2);
-	}
-
-	.action-header h3 {
-		margin: 0;
-		color: #1e7e34;
-		font-size: 1.1rem;
-		font-weight: 600;
-	}
-
-	.selection-summary {
-		color: #666;
-		font-size: 0.9rem;
-		font-weight: 500;
-	}
-
-	.action-buttons {
-		display: flex;
-		gap: 1rem;
-		justify-content: center;
-		flex-wrap: wrap;
-	}
-
-	.action-btn {
-		display: flex;
-		align-items: center;
-		gap: 0.5rem;
-		padding: 0.875rem 1.5rem;
-		border: none;
-		border-radius: 8px;
-		font-size: 1rem;
-		font-weight: 600;
-		cursor: pointer;
-		transition: all 0.2s ease;
-		min-width: 250px;
-		justify-content: center;
-		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-	}
-
-	.action-btn:hover {
-		transform: translateY(-2px);
-		box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
-	}
-
-	.download-btn {
-		background: linear-gradient(135deg, #28a745 0%, #218838 100%);
-		color: white;
-	}
-
-	.download-btn:hover {
-		background: linear-gradient(135deg, #218838 0%, #1e7e34 100%);
-	}
-
-	.btn-icon {
-		font-size: 1.2rem;
-	}
-
-	.btn-count {
-		background: rgba(255, 255, 255, 0.2);
-		padding: 0.25rem 0.5rem;
-		border-radius: 12px;
-		font-size: 0.85rem;
-		font-weight: 700;
-	}
-
-	.pagination {
-		display: flex;
-		justify-content: center;
-		align-items: center;
-		gap: 0.5rem;
-		margin-bottom: 1rem;
-		padding: 1rem;
-		background: #f8f9fa;
-		border-radius: 8px;
-	}
-
-	.pagination-btn, .page-number {
-		padding: 0.5rem 0.75rem;
-		border: 1px solid #ddd;
-		background: white;
-		color: #333;
-		border-radius: 4px;
-		cursor: pointer;
-		transition: all 0.2s ease;
-	}
-
-	.pagination-btn:hover:not(:disabled), .page-number:hover {
-		background: #4a90e2;
-		color: white;
-		border-color: #4a90e2;
-	}
-
-	.page-number.active {
-		background: #4a90e2;
-		color: white;
-		border-color: #4a90e2;
-	}
-
-	.pagination-btn:disabled {
-		background: #f5f5f5;
-		color: #999;
-		cursor: not-allowed;
-	}
-
-	.page-numbers {
-		display: flex;
-		gap: 0.25rem;
-	}
 
 	.albums-grid {
 		display: grid;
