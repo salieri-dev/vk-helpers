@@ -6,11 +6,9 @@
 	import { parseMessagesForChats, type ChatAnalytics } from '$lib/utils/messageParser';
 	import StatsCard from '$lib/components/StatsCard.svelte';
 	import TimelineChart from '$lib/components/TimelineChart.svelte';
-	import ActivityHeatmap from '$lib/components/ActivityHeatmap.svelte';
-	import ConversationBalance from '$lib/components/ConversationBalance.svelte';
-	import ResponseTimeStats from '$lib/components/ResponseTimeStats.svelte';
-	import RelationshipTimeline from '$lib/components/RelationshipTimeline.svelte';
+	import Chart from '$lib/components/Chart.svelte'; // Import your new wrapper
 	import stopwords from 'stopwords-ru';
+	import WordCloud from '$lib/components/WordCloud.svelte';
 
 	let analytics: ChatAnalytics[] = [];
 	let cachedAnalytics: ChatAnalytics[] = []; // Store cached preprocessed data with high limits
@@ -212,6 +210,146 @@
 		.sort(([,a], [,b]) => b - a)
 		.slice(0, 100) // Set static top words count
 		.map(([word, count]) => ({ word, count }));
+	// Create a reactive variable for the chart options
+	$: relationshipTimelineOptions = (chat: ChatAnalytics) => {
+		const categories = chat.relationshipTimeline.map(period => period.month);
+		const series = [{
+			name: "You",
+			data: chat.relationshipTimeline.map(period => period.userMessages)
+		}, {
+			name: "Them",
+			data: chat.relationshipTimeline.map(period => period.otherMessages)
+		}];
+
+		return {
+			series: series,
+			chart: {
+				type: 'bar',
+				height: 350,
+				stacked: true,
+				toolbar: { show: false }
+			},
+			xaxis: {
+				categories: categories,
+				title: { text: 'Month' }
+			},
+			yaxis: {
+				title: { text: 'Message Count' }
+			},
+			title: {
+				text: `Relationship Timeline - ${chat.chatName}`,
+				align: 'center'
+			},
+			legend: {
+				position: 'top'
+			}
+		};
+	};
+
+	$: conversationBalanceOptions = (chat: ChatAnalytics) => {
+		return {
+			series: [chat.conversationBalance.messageRatio, 1],
+			chart: {
+				type: 'donut',
+				height: 350
+			},
+			labels: ['You', 'Them'],
+			title: {
+				text: `Conversation Balance - ${chat.chatName}`,
+				align: 'center'
+			},
+			legend: {
+				position: 'bottom'
+			}
+		};
+	};
+
+	$: responseTimeStatsOptions = (stats: any, userName: string) => {
+		const series = [
+			{
+				name: 'Response Time',
+				data: [
+					stats.average,
+					stats.median,
+					stats.fastest,
+					stats.slowest
+				]
+			}
+		];
+		return {
+			series: series,
+			chart: {
+				type: 'bar',
+				height: 350,
+				toolbar: { show: false }
+			},
+			xaxis: {
+				categories: ['Average', 'Median', 'Fastest', 'Slowest'],
+				title: { text: 'Metric' }
+			},
+			yaxis: {
+				title: { text: 'Response Time (seconds)' }
+			},
+			title: {
+				text: `Response Time Stats - ${userName}`,
+				align: 'center'
+			}
+		};
+	};
+
+	$: activityHeatmapOptions = (data: { [key: string]: number }, type: 'hourly' | 'daily') => {
+		const series = [{
+			name: 'Messages',
+			data: Object.entries(data).map(([key, value]) => ({ x: key, y: value }))
+		}];
+
+		return {
+			series: series,
+			chart: {
+				type: 'heatmap',
+				height: 350,
+				toolbar: { show: false }
+			},
+			plotOptions: {
+				heatmap: {
+					shadeIntensity: 0.5,
+					colorScale: {
+						ranges: [{
+							from: 0,
+							to: 10,
+							name: 'low',
+							color: '#00A100'
+						},
+						{
+							from: 11,
+							to: 50,
+							name: 'medium',
+							color: '#128FD9'
+						},
+						{
+							from: 51,
+							to: 100,
+							name: 'high',
+							color: '#FFB200'
+						},
+						{
+							from: 101,
+							to: 1000,
+							name: 'extreme',
+							color: '#FF0000'
+						}]
+					}
+				}
+			},
+			dataLabels: {
+				enabled: false
+			},
+			title: {
+				text: `Activity Heatmap - ${type === 'hourly' ? 'By Hour' : 'By Day'}`,
+				align: 'center'
+			}
+		};
+	};
 </script>
 
 <svelte:head>
@@ -534,13 +672,11 @@
 		<section class="activity-analysis">
 			<h2>Activity Patterns</h2>
 			<div class="charts-grid">
-				<div class="chart-container">
-					<h3>Most Active Hours</h3>
-					<ActivityHeatmap data={combinedHourActivity} type="hourly" />
+				<div class="chart-wrapper">
+					<Chart options={activityHeatmapOptions(combinedHourActivity, 'hourly')} />
 				</div>
-				<div class="chart-container">
-					<h3>Most Active Days</h3>
-					<ActivityHeatmap data={combinedDayActivity} type="daily" />
+				<div class="chart-wrapper">
+					<Chart options={activityHeatmapOptions(combinedDayActivity, 'daily')} />
 				</div>
 			</div>
 		</section>
@@ -558,38 +694,33 @@
 			<!-- Conversation Balance for each chat -->
 			{#each analytics as chat}
 				{#if chat.userMessages > 0 && chat.otherMessages > 0}
-					<ConversationBalance
-						balance={chat.conversationBalance}
-						otherUserName={chat.chatName}
-					/>
+					<div class="chart-wrapper">
+						<Chart options={conversationBalanceOptions(chat)} />
+					</div>
 				{/if}
 			{/each}
-
 			<!-- Global Response Time Stats -->
 			{#if analytics.length > 0 && analytics[0].globalResponseTimeStats.totalResponses > 0}
-				<ResponseTimeStats
-					stats={analytics[0].globalResponseTimeStats}
-					userName="Global"
-				/>
+				<div class="chart-wrapper">
+					<Chart options={responseTimeStatsOptions(analytics[0].globalResponseTimeStats, "Global")} />
+				</div>
 			{/if}
 
 			<!-- Individual Response Time Stats for top users -->
 			{#each allUserStats.slice(0, 3) as user}
 				{#if user.responseTimeStats && user.responseTimeStats.totalResponses > 5}
-					<ResponseTimeStats
-						stats={user.responseTimeStats}
-						userName={user.sender}
-					/>
+					<div class="chart-wrapper">
+						<Chart options={responseTimeStatsOptions(user.responseTimeStats, user.sender)} />
+					</div>
 				{/if}
 			{/each}
 
 			<!-- Relationship Timeline for each chat -->
 			{#each analytics as chat}
 				{#if chat.relationshipTimeline.length > 1}
-					<RelationshipTimeline
-						timeline={chat.relationshipTimeline}
-						chatName={chat.chatName}
-					/>
+					<div class="chart-wrapper">
+						<Chart options={relationshipTimelineOptions(chat)} />
+					</div>
 				{/if}
 			{/each}
 		</section>
@@ -598,17 +729,8 @@
 		<section class="words-section">
 			<h2>Word Analysis</h2>
 			<div class="words-container">
-				<div class="top-words-list">
-					<h3>Top 100 Words</h3>
-					<div class="words-horizontal">
-						{#each topWordsList as { word, count }, index}
-							<div class="word-item">
-								<span class="word-rank">{index + 1}</span>
-								<span class="word">{word}</span>
-								<span class="count">{count}</span>
-							</div>
-						{/each}
-					</div>
+				<div class="chart-wrapper">
+					<WordCloud words={topWordsList} />
 				</div>
 			</div>
 		</section>
@@ -1163,5 +1285,14 @@
 			padding: 0.5rem 0.75rem;
 			font-size: 0.75rem;
 		}
+	}
+	.chart-wrapper {
+		background: white;
+		padding: 1rem;
+		border-radius: 8px;
+		margin-bottom: 1.5rem;
+	}
+	.chart-wrapper:empty {
+		display: none;
 	}
 </style>

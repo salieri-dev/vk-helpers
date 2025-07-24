@@ -10,6 +10,7 @@ export interface Message {
 	content: string;
 	hasAttachment: boolean;
 	attachmentInfo: string;
+	attachmentLinks: string[];
 	edited: boolean;
 }
 
@@ -20,6 +21,7 @@ export interface MessageTypeStats {
 	wallPosts: number;
 	voiceMessages: number;
 	documents: number;
+	videos: number;
 	textMessages: number;
 }
 
@@ -290,6 +292,7 @@ function parseMessagesFromHtml(htmlContent: string, fileName: string = 'Unknown'
 			let hasAttachment = false;
 			let edited = false;
 			let attachmentInfo = '';
+			let attachmentLinks: string[] = [];
 
 			for (const child of contentElements) {
 				if (child.classList.contains('message__header')) continue;
@@ -306,6 +309,9 @@ function parseMessagesFromHtml(htmlContent: string, fileName: string = 'Unknown'
 					const attachments = Array.from(attachmentDescs).map(desc => desc.textContent?.trim() || '');
 					attachmentInfo = attachments.join(' ').trim();
 					
+					const attachmentLinkElements = kludgesDiv.querySelectorAll('a');
+					attachmentLinks = Array.from(attachmentLinkElements).map((link) => link.href || '');
+
 					// Debug logging
 					if (attachmentInfo) {
 						console.log(`Message ${id}: Found ${attachmentDescs.length} attachments: "${attachmentInfo}"`);
@@ -318,7 +324,7 @@ function parseMessagesFromHtml(htmlContent: string, fileName: string = 'Unknown'
 				kludgesToRemove.forEach(k => k.remove());
 				
 				const text = clonedDiv.textContent?.trim() || '';
-				content = attachmentInfo ? `${text} ${attachmentInfo}`.trim() : text;
+				content = text;
 				break;
 			}
 
@@ -338,6 +344,7 @@ function parseMessagesFromHtml(htmlContent: string, fileName: string = 'Unknown'
 					content,
 					hasAttachment,
 					attachmentInfo,
+					attachmentLinks,
 					edited
 				});
 				// console.log(`✅ Successfully parsed message ${id}`);
@@ -565,20 +572,10 @@ function calculateAnalytics(chatId: string, chatName: string, messages: Message[
 		wallPosts: 0,
 		voiceMessages: 0,
 		documents: 0,
+		videos: 0,
 		textMessages: 0
 	};
 
-	// VK system terms to filter out from word frequency
-	const vkSystemTerms = new Set([
-		'сообщение', 'прикреплённое', 'фотография', 'стикер', 'запись',
-		'стене', 'голосовое', 'аудиозапись', 'документ', 'видеозапись',
-		'геолокация', 'карта', 'файл', 'ссылка', 'poll', 'опрос',
-		'переслано', 'пересланное', 'vk', 'com', 'vkontakte', 'id', 'club', 'public',
-		'event', 'topic', 'wall', 'photo', 'video', 'audio', 'doc', 'link', 'note',
-		'market', 'album', 'page', 'group', 'user', 'app', 'widget', 'www',
-		'http', 'https', 'jpg', 'jpeg', 'png', 'gif', 'mp4', 'avi', 'mp3',
-		'size', 'quality', 'type', 'api', 'cdn', 'sun', 'userapi', 'impg', 'male'
-	]);
 
 	// Function to check if a word is likely a URL, ID, or technical term
 	function isNonMeaningfulText(word: string): boolean {
@@ -626,41 +623,35 @@ function calculateAnalytics(chatId: string, chatName: string, messages: Message[
 	const wordCounts: { [word: string]: number } = {};
 
 	messages.forEach(message => {
-		const content = message.content.toLowerCase();
 		const attachmentInfo = message.attachmentInfo.toLowerCase();
-		
-		// Detect message type based on attachment info (priority) or content
-		// Debug: log attachment info for debugging
+
 		if (attachmentInfo) {
-			console.log(`Debug: attachmentInfo = "${attachmentInfo}"`);
-		}
-		
-		if (attachmentInfo.includes('фотография') || attachmentInfo.includes('изображение')) {
-			messageTypes.photos++;
-			console.log('Detected photo');
-		} else if (attachmentInfo.includes('стикер')) {
-			messageTypes.stickers++;
-			console.log('Detected sticker');
-		} else if (attachmentInfo.includes('прикреплённое сообщение') || attachmentInfo.includes('переслано')) {
-			messageTypes.forwardedMessages++;
-			console.log('Detected forwarded message');
-		} else if (attachmentInfo.includes('запись') && attachmentInfo.includes('стене')) {
-			messageTypes.wallPosts++;
-			console.log('Detected wall post');
-		} else if (attachmentInfo.includes('голосовое сообщение') || attachmentInfo.includes('аудиозапись')) {
-			messageTypes.voiceMessages++;
-			console.log('Detected voice message');
-		} else if (attachmentInfo.includes('документ') || attachmentInfo.includes('файл')) {
-			messageTypes.documents++;
-			console.log('Detected document');
+			if (attachmentInfo.includes('фотография')) {
+				messageTypes.photos++;
+			} else if (attachmentInfo.includes('стикер')) {
+				messageTypes.stickers++;
+			} else if (attachmentInfo.includes('прикреплённое сообщение')) {
+				messageTypes.forwardedMessages++;
+			} else if (attachmentInfo.includes('запись на стене')) {
+				messageTypes.wallPosts++;
+			} else if (
+				attachmentInfo.includes('голосовое сообщение') ||
+				(attachmentInfo.includes('файл') && message.attachmentLinks.some((link) => link.endsWith('.ogg')))
+			) {
+				messageTypes.voiceMessages++;
+			} else if (attachmentInfo.includes('документ') || attachmentInfo.includes('файл')) {
+				messageTypes.documents++;
+			} else if (attachmentInfo.includes('видеозапись')) {
+				messageTypes.videos++;
+			}
 		} else {
-			messageTypes.textMessages++;
-			if (attachmentInfo) {
-				console.log(`Unmatched attachment: "${attachmentInfo}"`);
+			// If no attachment description, it's a text message if it has text content.
+			if (message.content.trim()) {
+				messageTypes.textMessages++;
 			}
 		}
 
-		// Calculate basic metrics - use case-insensitive counting
+		// Calculate basic metrics
 		const words = message.content.toLowerCase().split(/\s+/).filter(word => word.length > 0);
 		totalWords += words.length;
 		totalLength += message.content.length;
@@ -672,20 +663,13 @@ function calculateAnalytics(chatId: string, chatName: string, messages: Message[
 		hourActivity[hour] = (hourActivity[hour] || 0) + 1;
 		dayActivity[day] = (dayActivity[day] || 0) + 1;
 
-		// Word frequency analysis for all messages (not just text messages)
-		// Only exclude pure system messages
-		const isSystemOnlyMessage = content.includes('фотография') || content.includes('стикер') ||
-			content.includes('голосовое сообщение') || content.includes('документ') || content.includes('файл') ||
-			(content.includes('прикреплённое сообщение') && !content.match(/[а-яё]/gi)) ||
-			content.includes('переслано');
-
-		if (!isSystemOnlyMessage) {
-			const cleanWords = content
+		// Word frequency analysis for all messages with actual text content
+		if (message.content.trim()) {
+			const cleanWords = message.content.toLowerCase()
 				.replace(/[^\u0400-\u04FF\w\s]/g, '') // Keep only Cyrillic and Latin letters
 				.split(/\s+/)
 				.filter(word =>
 					word.length > 2 &&
-					!vkSystemTerms.has(word) &&
 					!russianStopwords.has(word) &&
 					!/^\d+$/.test(word) && // Filter out pure numbers
 					!isNonMeaningfulText(word) // Filter out URLs, IDs, etc.
@@ -720,6 +704,7 @@ function calculateAnalytics(chatId: string, chatName: string, messages: Message[
 					wallPosts: 0,
 					voiceMessages: 0,
 					documents: 0,
+					videos: 0,
 					textMessages: 0
 				},
 				mostActiveHours: {},
@@ -737,21 +722,30 @@ function calculateAnalytics(chatId: string, chatName: string, messages: Message[
 		const words = message.content.toLowerCase().split(/\s+/).filter(word => word.length > 0);
 		userStats.wordCount += words.length;
 
-		// Message type detection based on attachment info (priority) or content
-		if (attachmentInfo.includes('фотография') || attachmentInfo.includes('изображение')) {
-			userStats.messageTypes.photos++;
-		} else if (attachmentInfo.includes('стикер')) {
-			userStats.messageTypes.stickers++;
-		} else if (attachmentInfo.includes('прикреплённое сообщение') || attachmentInfo.includes('переслано')) {
-			userStats.messageTypes.forwardedMessages++;
-		} else if (attachmentInfo.includes('запись') && attachmentInfo.includes('стене')) {
-			userStats.messageTypes.wallPosts++;
-		} else if (attachmentInfo.includes('голосовое сообщение') || attachmentInfo.includes('аудиозапись')) {
-			userStats.messageTypes.voiceMessages++;
-		} else if (attachmentInfo.includes('документ') || attachmentInfo.includes('файл')) {
-			userStats.messageTypes.documents++;
+		if (attachmentInfo) {
+			if (attachmentInfo.includes('фотография')) {
+				userStats.messageTypes.photos++;
+			} else if (attachmentInfo.includes('стикер')) {
+				userStats.messageTypes.stickers++;
+			} else if (attachmentInfo.includes('прикреплённое сообщение')) {
+				userStats.messageTypes.forwardedMessages++;
+			} else if (attachmentInfo.includes('запись на стене')) {
+				userStats.messageTypes.wallPosts++;
+			} else if (
+				attachmentInfo.includes('голосовое сообщение') ||
+				(attachmentInfo.includes('файл') && message.attachmentLinks.some((link) => link.endsWith('.ogg')))
+			) {
+				userStats.messageTypes.voiceMessages++;
+			} else if (attachmentInfo.includes('документ') || attachmentInfo.includes('файл')) {
+				userStats.messageTypes.documents++;
+			} else if (attachmentInfo.includes('видеозапись')) {
+				userStats.messageTypes.videos++;
+			}
 		} else {
-			userStats.messageTypes.textMessages++;
+			// If no attachment description, it's a text message if it has text content.
+			if (message.content.trim()) {
+				userStats.messageTypes.textMessages++;
+			}
 		}
 
 		// Activity patterns
@@ -781,7 +775,6 @@ function calculateAnalytics(chatId: string, chatName: string, messages: Message[
 				.split(/\s+/)
 				.filter(word =>
 					word.length > 2 &&
-					!vkSystemTerms.has(word) &&
 					!russianStopwords.has(word) &&
 					!/^\d+$/.test(word) &&
 					!isNonMeaningfulText(word) // Filter out URLs, IDs, etc.

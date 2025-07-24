@@ -32,14 +32,21 @@
 		"vite": "^7.0.4"
 	},
 	"dependencies": {
+		"@types/d3": "^7.4.3",
+		"@types/d3-cloud": "^1.2.9",
 		"@vite-pwa/sveltekit": "^1.0.0",
+		"apexcharts": "^5.3.1",
 		"chart.js": "^4.5.0",
+		"d3": "^7.9.0",
+		"d3-cloud": "^1.2.7",
 		"date-fns": "^4.1.0",
 		"iconv-lite": "^0.6.3",
 		"idb": "^8.0.3",
 		"jszip": "^3.10.1",
 		"piexifjs": "^1.0.6",
 		"stopwords-ru": "^0.3.0",
+		"svelte-apexcharts": "^1.0.2",
+		"vis-network": "^10.0.1",
 		"workbox-precaching": "^7.3.0",
 		"workbox-routing": "^7.3.0",
 		"workbox-strategies": "^7.3.0"
