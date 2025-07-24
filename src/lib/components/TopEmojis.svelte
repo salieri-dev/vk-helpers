@@ -10,6 +10,9 @@
     .slice(0, topN);
 
   $: hasData = emojiStats.size > 0;
+  
+  // Calculate dynamic height based on number of items
+  $: chartHeight = Math.max(300, topEmojis.length * 45 + 20); // 45px per bar + margins
 
   function drawChart(chartContext: any) {
     const { g, innerWidth, innerHeight, showTooltip, hideTooltip } = chartContext;
@@ -84,11 +87,12 @@
 <div class="top-emojis-container">
   <D3Chart
     data={hasData ? topEmojis : null}
-    width={600}
-    height={400}
-    margin={{ top: 20, right: 60, bottom: 40, left: 120 }}
+    width="auto"
+    height={chartHeight}
+    margin={{ top: 40, right: 40, bottom: 40, left: 40 }}
     responsive={true}
     maxWidth={800}
+    minWidth={400}
     on:ready={(event) => drawChart(event.detail)}
   />
 </div>
@@ -96,13 +100,8 @@
 <style>
   .top-emojis-container {
     width: 100%;
-    max-width: 600px;
     margin: auto;
   }
   
-  svg {
-    width: 100%;
-    height: 100%;
-  }
   
 </style>

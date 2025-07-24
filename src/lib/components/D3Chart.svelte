@@ -73,7 +73,9 @@
 			height: actualHeight,
 			innerWidth,
 			innerHeight,
-			margin
+			margin,
+			showTooltip,
+			hideTooltip
 		});
 	}
 

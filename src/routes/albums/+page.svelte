@@ -295,23 +295,6 @@
 		margin-bottom: 0.5rem;
 	}
 
-	.loading, .error, .no-albums {
-		text-align: center;
-		padding: 3rem;
-		background: #f8f9fa;
-		border-radius: 8px;
-	}
-
-	.spinner {
-		width: 40px;
-		height: 40px;
-		border: 4px solid #f3f3f3;
-		border-top: 4px solid #4a90e2;
-		border-radius: 50%;
-		animation: spin 1s linear infinite;
-		margin: 0 auto 1rem;
-	}
-
 	.spinner-small {
 		width: 24px;
 		height: 24px;
@@ -536,11 +519,6 @@
 			display: none;
 		}
 
-		.action-header {
-			flex-direction: column;
-			gap: 0.5rem;
-			text-align: center;
-		}
 
 		.photos-grid {
 			grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));

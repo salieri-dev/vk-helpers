@@ -246,18 +246,8 @@
     overflow: hidden;
   }
 
-  .chart-container {
-    position: relative;
-    height: 400px;
-    width: 100%;
-    overflow: visible;
-  }
 
-  .chart-container svg {
-    width: 100%;
-    height: 100%;
-  }
-
+  
   .chart-summary {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));

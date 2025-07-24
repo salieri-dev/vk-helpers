@@ -788,49 +788,12 @@
 		margin-bottom: 0.5rem;
 	}
 
-	.loading, .error, .no-data {
-		text-align: center;
-		padding: 3rem;
-		background: #f8f9fa;
-		border-radius: 8px;
-	}
-
-	.loading h3 {
-		color: #4a90e2;
-		margin-bottom: 1rem;
-		font-size: 1.3rem;
-	}
-
-	.spinner {
-		width: 40px;
-		height: 40px;
-		border: 4px solid #f3f3f3;
-		border-top: 4px solid #4a90e2;
-		border-radius: 50%;
-		animation: spin 1s linear infinite;
-		margin: 0 auto 1rem;
-	}
 
 	@keyframes spin {
 		0% { transform: rotate(0deg); }
 		100% { transform: rotate(360deg); }
 	}
 
-	.progress-bar {
-		width: 100%;
-		height: 8px;
-		background-color: #e9ecef;
-		border-radius: 4px;
-		margin: 1rem 0 0.5rem 0;
-		overflow: hidden;
-	}
-
-	.progress-fill {
-		height: 100%;
-		background: linear-gradient(90deg, #4a90e2, #5ba3f5);
-		border-radius: 4px;
-		transition: width 0.5s ease;
-	}
 
 	.performance-warning {
 		margin-top: 1.5rem;

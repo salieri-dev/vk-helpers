@@ -713,73 +713,10 @@
 		margin-bottom: 2rem;
 	}
 
-	.selected-chats h3 {
-		margin: 0 0 1rem 0;
-		color: #333;
-	}
-
-	.selected-chats ul {
-		list-style: none;
-		padding: 0;
-		margin: 0;
-	}
-
-	.selected-chats li {
-		padding: 0.25rem 0;
-		color: #666;
-	}
-
-	/* Download Method Indicator Styles */
-	.download-method-indicator {
-		background: white;
-		border: 1px solid #e9ecef;
-		border-radius: 8px;
-		padding: 1.5rem;
-		margin: 1.5rem 0;
-	}
-
-	.method-status {
-		display: flex;
-		align-items: flex-start;
-		gap: 1rem;
-	}
-
 	.status-bulb {
 		font-size: 1.5rem;
 		margin-top: 0.2rem;
 	}
-
-	.method-info {
-		flex: 1;
-	}
-
-	.method-info strong {
-		display: block;
-		font-size: 1.1rem;
-		margin-bottom: 0.5rem;
-		color: #333;
-	}
-
-	.method-info small {
-		color: #666;
-		font-size: 0.9rem;
-		line-height: 1.4;
-	}
-
-	.method-status.supported {
-		border-left: 4px solid #28a745;
-		padding-left: 1rem;
-		margin-left: -1rem;
-		background: #f8fff9;
-	}
-
-	.method-status.fallback {
-		border-left: 4px solid #dc3545;
-		padding-left: 1rem;
-		margin-left: -1rem;
-		background: #fff8f8;
-	}
-
 	.progress-section {
 		background: #f8f9fa;
 		border-radius: 8px;

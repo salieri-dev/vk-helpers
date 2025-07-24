@@ -287,35 +287,6 @@
 		text-align: left;
 	}
 
-	/* Error Message Styles */
-	.error-message {
-		background: #fee;
-		border: 1px solid #fcc;
-		border-radius: 8px;
-		padding: 2rem;
-		margin-top: 2rem;
-		text-align: center;
-	}
-
-	.error-message h3 {
-		color: #c33;
-		margin-bottom: 1rem;
-	}
-
-	.error-message button {
-		background: #4a90e2;
-		color: white;
-		border: none;
-		padding: 0.8rem 2rem;
-		border-radius: 6px;
-		cursor: pointer;
-		font-size: 1rem;
-		margin-top: 1rem;
-	}
-
-	.error-message button:hover {
-		background: #357abd;
-	}
 
 	/* Navigation Section Styles */
 	.navigation-section {
