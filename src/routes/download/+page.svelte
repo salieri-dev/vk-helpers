@@ -13,6 +13,9 @@
 	import type { AlbumImageExtractionProgress } from '$lib/utils/albumImageExtractor';
 	import type { DownloadProgress, DownloadResult } from '$lib/utils/imageDownloader';
 
+	// Define download phase type for better type safety
+	type DownloadPhase = 'config' | 'extraction' | 'download' | 'complete' | 'error';
+
 	let archiveData: typeof $archiveStore;
 	let selectedChatIds: string[] = [];
 	let selectedChats: { id: string; name: string }[] = [];
@@ -21,7 +24,7 @@
 	let downloadType: 'chats' | 'albums' = 'chats';
 	
 	// State management
-	let currentPhase: 'config' | 'extraction' | 'download' | 'complete' | 'error' = 'config';
+	let currentPhase: DownloadPhase = 'config';
 	let isProcessing = false;
 	let extractionProgress: ImageExtractionProgress | null = null;
 	let albumExtractionProgress: AlbumImageExtractionProgress | null = null;

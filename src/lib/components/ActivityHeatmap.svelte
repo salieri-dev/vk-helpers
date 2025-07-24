@@ -1,44 +1,18 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import * as d3 from 'd3';
+  import D3Chart from './D3Chart.svelte';
 
   export let data: { [key: string]: number } = {};
   export let type: 'hourly' | 'daily' = 'hourly';
   export let title: string = '';
 
-  let svgElement: SVGElement;
-  let containerElement: HTMLDivElement;
-
-  $: if (svgElement && containerElement && Object.keys(data).length > 0) {
-    createHeatmap();
+  interface ChartData {
+    day: string;
+    value: number;
   }
 
-  function createHeatmap() {
-    // Clear previous chart
-    d3.select(svgElement).selectAll('*').remove();
-
-    if (type === 'hourly') {
-      createHourlyHeatmap();
-    } else {
-      createDailyChart();
-    }
-  }
-
-  function createHourlyHeatmap() {
-    // Get dynamic width from container
-    const containerWidth = containerElement.getBoundingClientRect().width;
-    const width = Math.min(containerWidth - 32, 600); // Max 600px, subtract padding
-    const height = 400;
-    const margin = { top: 60, right: 40, bottom: 60, left: 80 };
-    const innerWidth = width - margin.left - margin.right;
-    const innerHeight = height - margin.top - margin.bottom;
-
-    const svg = d3.select(svgElement)
-      .attr('width', width)
-      .attr('height', height);
-
-    const g = svg.append('g')
-      .attr('transform', `translate(${margin.left},${margin.top})`);
+  function createHourlyHeatmap(chartContext: any) {
+    const { svg, g, width, height, innerWidth, innerHeight, showTooltip, hideTooltip } = chartContext;
 
     // Add title
     svg.append('text')
@@ -87,34 +61,21 @@
       .enter().append('path')
       .attr('class', 'hour-arc')
       .attr('d', (d: number) => arc(d))
-      .attr('fill', d => colorScale(data[d] || 0))
+      .attr('fill', (d: number) => colorScale(data[d] || 0))
       .attr('stroke', '#fff')
       .attr('stroke-width', 1)
       .style('opacity', 0.8)
-      .on('mouseover', function(event, d) {
+      .on('mouseover', function(this: SVGPathElement, event: MouseEvent, d: number) {
         d3.select(this).style('opacity', 1);
         
-        const tooltip = d3.select('body').append('div')
-          .attr('class', 'tooltip')
-          .style('position', 'absolute')
-          .style('background', 'rgba(0, 0, 0, 0.8)')
-          .style('color', 'white')
-          .style('padding', '10px')
-          .style('border-radius', '5px')
-          .style('pointer-events', 'none')
-          .style('font-size', '12px')
-          .style('z-index', '1000');
-
-        tooltip.html(`
+        showTooltip(event, `
           <strong>${d}:00 - ${d + 1}:00</strong><br/>
           Messages: ${(data[d] || 0).toLocaleString()}
-        `)
-        .style('left', (event.pageX + 10) + 'px')
-        .style('top', (event.pageY - 10) + 'px');
+        `);
       })
-      .on('mouseout', function() {
+      .on('mouseout', function(this: SVGPathElement) {
         d3.select(this).style('opacity', 0.8);
-        d3.selectAll('.tooltip').remove();
+        hideTooltip();
       });
 
     // Add hour labels
@@ -122,7 +83,7 @@
       .data(hours.filter(h => h % 3 === 0)) // Show every 3rd hour
       .enter().append('text')
       .attr('class', 'hour-label')
-      .attr('transform', d => {
+      .attr('transform', (d: number) => {
         const angle = angleScale(d + 0.5) - Math.PI / 2;
         const radius = outerRadius + 15;
         return `translate(${Math.cos(angle) * radius}, ${Math.sin(angle) * radius})`;
@@ -132,7 +93,7 @@
       .style('font-size', '12px')
       .style('font-weight', 'bold')
       .style('fill', '#666')
-      .text(d => `${d}:00`);
+      .text((d: number) => `${d}:00`);
 
     // Add center circle with total
     const totalMessages = Object.values(data).reduce((sum, val) => sum + val, 0);
@@ -160,21 +121,8 @@
       .text(totalMessages.toLocaleString());
   }
 
-  function createDailyChart() {
-    // Get dynamic width from container
-    const containerWidth = containerElement.getBoundingClientRect().width;
-    const width = Math.min(containerWidth - 32, 600); // Max 600px, subtract padding
-    const height = 300;
-    const margin = { top: 60, right: 40, bottom: 60, left: 80 };
-    const innerWidth = width - margin.left - margin.right;
-    const innerHeight = height - margin.top - margin.bottom;
-
-    const svg = d3.select(svgElement)
-      .attr('width', width)
-      .attr('height', height);
-
-    const g = svg.append('g')
-      .attr('transform', `translate(${margin.left},${margin.top})`);
+  function createDailyChart(chartContext: any) {
+    const { svg, g, width, height, innerWidth, innerHeight, showTooltip, hideTooltip } = chartContext;
 
     // Add title
     svg.append('text')
@@ -188,7 +136,7 @@
 
     // Process data - use actual keys from the data
     const days = Object.keys(data).length > 0 ? Object.keys(data) : [];
-    const chartData = days.map(day => ({
+    const chartData: ChartData[] = days.map(day => ({
       day,
       value: data[day] || 0
     })).filter(d => d.value > 0); // Only show days with activity
@@ -243,7 +191,7 @@
 
     // Add Y axis
     g.append('g')
-      .call(d3.axisLeft(yScale).tickFormat(d => d.toLocaleString()))
+      .call(d3.axisLeft(yScale).tickFormat((d: d3.NumberValue) => d.toLocaleString()))
       .selectAll('text')
       .style('font-size', '12px')
       .style('fill', '#666');
@@ -253,7 +201,7 @@
       .data(chartData)
       .enter().append('rect')
       .attr('class', 'bar')
-      .attr('x', d => xScale(d.day) || 0)
+      .attr('x', (d: ChartData) => xScale(d.day) || 0)
       .attr('width', xScale.bandwidth())
       .attr('y', innerHeight)
       .attr('height', 0)
@@ -261,87 +209,68 @@
       .attr('rx', 4)
       .attr('ry', 4)
       .style('opacity', 0.8)
-      .on('mouseover', function(event, d) {
+      .on('mouseover', function(this: SVGRectElement, event: MouseEvent, d: ChartData) {
         d3.select(this).style('opacity', 1);
         
-        const tooltip = d3.select('body').append('div')
-          .attr('class', 'tooltip')
-          .style('position', 'absolute')
-          .style('background', 'rgba(0, 0, 0, 0.8)')
-          .style('color', 'white')
-          .style('padding', '10px')
-          .style('border-radius', '5px')
-          .style('pointer-events', 'none')
-          .style('font-size', '12px')
-          .style('z-index', '1000');
-
-        tooltip.html(`
+        showTooltip(event, `
           <strong>${d.day}</strong><br/>
           Messages: ${d.value.toLocaleString()}
-        `)
-        .style('left', (event.pageX + 10) + 'px')
-        .style('top', (event.pageY - 10) + 'px');
+        `);
       })
-      .on('mouseout', function() {
+      .on('mouseout', function(this: SVGRectElement) {
         d3.select(this).style('opacity', 0.8);
-        d3.selectAll('.tooltip').remove();
+        hideTooltip();
       })
       .transition()
       .duration(1000)
-      .delay((d, i) => i * 100)
-      .attr('y', d => yScale(d.value))
-      .attr('height', d => innerHeight - yScale(d.value));
+      .delay((_d: ChartData, i: number) => i * 100)
+      .attr('y', (d: ChartData) => yScale(d.value))
+      .attr('height', (d: ChartData) => innerHeight - yScale(d.value));
 
     // Add value labels on bars
     g.selectAll('.bar-label')
       .data(chartData)
       .enter().append('text')
       .attr('class', 'bar-label')
-      .attr('x', d => (xScale(d.day) || 0) + xScale.bandwidth() / 2)
-      .attr('y', d => yScale(d.value) - 5)
+      .attr('x', (d: ChartData) => (xScale(d.day) || 0) + xScale.bandwidth() / 2)
+      .attr('y', (d: ChartData) => yScale(d.value) - 5)
       .attr('text-anchor', 'middle')
       .style('font-size', '12px')
       .style('font-weight', 'bold')
       .style('fill', '#333')
       .style('opacity', 0)
-      .text(d => d.value.toLocaleString())
+      .text((d: ChartData) => d.value.toLocaleString())
       .transition()
       .duration(1000)
-      .delay((d, i) => i * 100 + 500)
+      .delay((_d: ChartData, i: number) => i * 100 + 500)
       .style('opacity', 1);
   }
-
-  // Handle window resize
-  function handleResize() {
-    if (svgElement && containerElement && Object.keys(data).length > 0) {
-      createHeatmap();
-    }
-  }
-
-  onMount(() => {
-    if (Object.keys(data).length > 0) {
-      createHeatmap();
-    }
-    
-    // Add resize listener
-    window.addEventListener('resize', handleResize);
-    
-    return () => {
-      window.removeEventListener('resize', handleResize);
-    };
-  });
 </script>
 
-<div class="activity-heatmap" bind:this={containerElement}>
-  <svg bind:this={svgElement}></svg>
-</div>
+<D3Chart
+  {data}
+  height={type === 'hourly' ? 400 : 300}
+  margin={{ top: 60, right: 40, bottom: 60, left: 80 }}
+  maxWidth={600}
+  minWidth={400}
+  responsive={true}
+  let:chartContext
+>
+  {#if Object.keys(data).length > 0}
+    {#if type === 'hourly'}
+      {createHourlyHeatmap(chartContext)}
+    {:else}
+      {createDailyChart(chartContext)}
+    {/if}
+  {:else}
+    <div class="no-data">
+      No activity data available
+    </div>
+  {/if}
+</D3Chart>
 
 <style>
-  .activity-heatmap {
-    width: 100%;
-    display: flex;
-    justify-content: center;
-    align-items: center;
+  :global(.d3-chart-container) {
     background: white;
     border-radius: 12px;
     padding: 1rem;
@@ -349,10 +278,12 @@
     min-height: 400px;
   }
 
-  svg {
-    max-width: 100%;
-    height: auto;
-    display: block;
-    margin: 0 auto;
+  .no-data {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 200px;
+    font-size: 16px;
+    color: #666;
   }
 </style>

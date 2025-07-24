@@ -470,6 +470,56 @@
 		padding: 2rem;
 	}
 
+	/* Action button styles using CSS custom properties */
+	.action-btn {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		padding: var(--action-btn-padding);
+		background: var(--action-btn-bg);
+		color: var(--action-btn-color);
+		border: var(--action-btn-border);
+		border-radius: var(--action-btn-border-radius);
+		cursor: pointer;
+		font-size: var(--action-btn-font-size);
+		font-weight: var(--action-btn-font-weight);
+		transition: all 0.2s ease;
+		backdrop-filter: blur(10px);
+	}
+
+	.action-btn:hover {
+		background: var(--action-btn-hover-bg);
+		border-color: var(--action-btn-hover-border);
+		transform: translateY(-2px);
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+	}
+
+	.action-btn:active {
+		transform: translateY(0);
+	}
+
+	.btn-icon {
+		font-size: var(--btn-icon-font-size);
+	}
+
+	.btn-text {
+		font-weight: var(--btn-text-font-weight);
+	}
+
+	.btn-count {
+		background: var(--btn-count-bg);
+		padding: var(--btn-count-padding);
+		border-radius: var(--btn-count-border-radius);
+		font-size: var(--btn-count-font-size);
+		font-weight: var(--btn-count-font-weight);
+	}
+
+	/* Button variant styles */
+	.download-btn:hover {
+		background: var(--download-btn-hover-bg);
+		border-color: var(--download-btn-hover-border);
+	}
+
 	/* Responsive Design */
 	@media (max-width: 768px) {
 		.albums-grid {
@@ -477,7 +527,13 @@
 		}
 
 		.action-btn {
+			flex: 1;
+			justify-content: center;
 			min-width: 100%;
+		}
+
+		.btn-text {
+			display: none;
 		}
 
 		.action-header {
