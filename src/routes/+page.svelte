@@ -66,16 +66,8 @@
 				<small>This may take a few moments for large archives</small>
 				<div class="progress-info">
 					<p>✅ ZIP file loaded ({formatFileSize(archiveData.file?.size || 0)})</p>
-					<p>{archiveData.processingStep || '🔍 Extracting chat data...'}</p>
-					{#if archiveData.processedChats !== undefined}
-						<p>💬 Found {archiveData.processedChats} chat{archiveData.processedChats !== 1 ? 's' : ''}</p>
-					{/if}
-					{#if archiveData.processedAlbums !== undefined}
-						<p>📸 Found {archiveData.processedAlbums} album{archiveData.processedAlbums !== 1 ? 's' : ''}</p>
-					{/if}
-					{#if archiveData.totalFiles !== undefined}
-						<p>📁 Processing {archiveData.totalFiles} archive files</p>
-					{/if}
+					<p>{archiveData.processingStep || '🔍 Reading archive index...'}</p>
+					<p>⚡ Using fast indexing for better performance</p>
 				</div>
 			</div>
 		</div>

@@ -1,7 +1,6 @@
 import { writable } from 'svelte/store';
 import JSZip from 'jszip';
-import { decodeWindows1251 } from '$lib/utils/encoding';
-import { parseAlbumsFromZip } from '$lib/utils/albumParser';
+import { extractChatListFromIndex, extractAlbumListFromIndex } from '$lib/utils/indexParsers';
 
 export interface ChatInfo {
 	id: string;
@@ -36,9 +35,7 @@ export interface ArchiveData {
 	isLoading: boolean;
 	error: string | null;
 	processingStep?: string;
-	processedChats?: number;
-	processedAlbums?: number;
-	totalFiles?: number;
+	archiveId?: string; // Added for tracking
 }
 
 function createArchiveStore() {
@@ -54,49 +51,29 @@ function createArchiveStore() {
 	return {
 		subscribe,
 		setFile: async (file: File) => {
-			// console.log('🔍 archiveStore.setFile called with file:', file.name, 'Size:', file.size);
+			const archiveId = generateArchiveId(file.name, file.size);
+			
 			update(state => ({
 				...state,
-				file, // Set the file immediately
+				file,
 				isLoading: true,
 				error: null,
 				processingStep: '📁 Loading ZIP file...',
-				processedChats: undefined,
-				totalFiles: undefined
+				archiveId
 			}));
 			
 			try {
-				// console.log('🔍 Loading ZIP file with JSZip...');
+				// Load ZIP file - this is fast
 				const zip = await JSZip.loadAsync(file);
-				const totalFiles = Object.keys(zip.files).length;
-				// console.log('✅ ZIP loaded, file count:', totalFiles);
-				// console.log('🔍 ZIP contents:', Object.keys(zip.files).slice(0, 10)); // Show first 10 files
 				
 				update(state => ({
 					...state,
-					processingStep: '🔍 Scanning archive structure...',
-					totalFiles
+					processingStep: '🔍 Reading archive index...'
 				}));
 				
-				// console.log('🔍 Extracting chats from ZIP...');
-				const chats = await extractChatsFromZip(zip, (step, processedChats) => {
-					update(state => ({
-						...state,
-						processingStep: step,
-						processedChats
-					}));
-				});
-				// console.log('✅ Chats extracted:', chats.length, 'chats found');
-				
-				// console.log('🔍 Extracting albums from ZIP...');
-				const albums = await parseAlbumsFromZip(zip, (step, processedAlbums) => {
-					update(state => ({
-						...state,
-						processingStep: step,
-						processedAlbums
-					}));
-				});
-				// console.log('✅ Albums extracted:', albums.length, 'albums found');
+				// FAST part: Only parse index files
+				const chats = await extractChatListFromIndex(zip);
+				const albums = await extractAlbumListFromIndex(zip);
 				
 				update(state => ({
 					...state,
@@ -105,21 +82,16 @@ function createArchiveStore() {
 					chats,
 					albums,
 					isLoading: false,
-					processingStep: undefined,
-					processedChats: undefined,
-					processedAlbums: undefined,
-					totalFiles: undefined
+					processingStep: undefined
 				}));
-				// console.log('✅ Archive store updated successfully');
+				
 			} catch (error) {
 				console.error('❌ Error in archiveStore.setFile:', error);
 				update(state => ({
 					...state,
 					error: error instanceof Error ? error.message : 'Unknown error',
 					isLoading: false,
-					processingStep: undefined,
-					processedChats: undefined,
-					totalFiles: undefined
+					processingStep: undefined
 				}));
 			}
 		},
@@ -131,104 +103,18 @@ function createArchiveStore() {
 				albums: [],
 				isLoading: false,
 				error: null,
-				processingStep: undefined,
-				processedChats: undefined,
-				processedAlbums: undefined,
-				totalFiles: undefined
+				processingStep: undefined
 			});
 		}
 	};
 }
 
-async function extractChatsFromZip(
-	zip: JSZip,
-	onProgress?: (step: string, processedChats?: number) => void
-): Promise<ChatInfo[]> {
-	const chats: ChatInfo[] = [];
-	
-	onProgress?.('🔍 Looking for message index file...');
-	
-	// Look for the messages index file
-	const indexFile = zip.file('messages/index-messages.html');
-	if (!indexFile) {
-		throw new Error('Messages index file not found in archive');
-	}
-
-	onProgress?.('📖 Reading message index file...');
-	
-	// Read and decode the index file
-	const indexBuffer = await indexFile.async('arraybuffer');
-	const indexContent = decodeWindows1251(indexBuffer);
-	
-	onProgress?.('🔍 Parsing chat information...');
-	
-	// Parse the HTML to extract chat information
-	const parser = new DOMParser();
-	const doc = parser.parseFromString(indexContent, 'text/html');
-	
-	// Extract chat links - they should be in the format: <peer_id>/messages0.html
-	const chatLinks = doc.querySelectorAll('a[href*="messages"]');
-	
-	onProgress?.('📊 Processing chat data...', 0);
-	
-	// Pre-filter message files once for better performance
-	const allMessageFiles = Object.keys(zip.files).filter(fileName =>
-		fileName.startsWith('messages/') &&
-		fileName.includes('/messages') &&
-		fileName.endsWith('.html')
-	);
-	
-	// Group message files by chat ID for efficient lookup
-	const messageFilesByChat: { [chatId: string]: string[] } = {};
-	for (const fileName of allMessageFiles) {
-		const pathParts = fileName.split('/');
-		if (pathParts.length >= 3) {
-			const chatId = pathParts[1];
-			if (!messageFilesByChat[chatId]) {
-				messageFilesByChat[chatId] = [];
-			}
-			messageFilesByChat[chatId].push(fileName);
-		}
-	}
-	
-	for (let i = 0; i < chatLinks.length; i++) {
-		const link = chatLinks[i];
-		const href = link.getAttribute('href');
-		if (!href || !href.includes('/messages0.html')) continue;
-		
-		const chatId = href.split('/')[0];
-		const chatName = link.textContent?.trim() || `Chat ${chatId}`;
-		
-		// Use pre-computed message files for this chat
-		const messageFiles = messageFilesByChat[chatId] || [];
-		const messageCount = messageFiles.length * 50; // Estimate: 50 messages per file
-		
-		// Skip expensive date parsing during initial extraction - we'll do this only when needed
-		// This speeds up the initial chat list loading significantly
-		const lastMessage: Date | null = null;
-		
-		chats.push({
-			id: chatId,
-			name: chatName,
-			messageCount,
-			lastMessage
-		});
-		
-		// Update progress more frequently for better UX
-		if ((i + 1) % 3 === 0 || i === chatLinks.length - 1) {
-			onProgress?.('📊 Processing chat data...', chats.length);
-		}
-	}
-	
-	onProgress?.('✅ Finalizing chat list...');
-	
-	return chats.sort((a, b) => {
-		// Sort by last message date, most recent first
-		if (!a.lastMessage && !b.lastMessage) return 0;
-		if (!a.lastMessage) return 1;
-		if (!b.lastMessage) return -1;
-		return b.lastMessage.getTime() - a.lastMessage.getTime();
-	});
+/**
+ * Generate a unique archive ID based on file name and size
+ */
+function generateArchiveId(filename: string, size: number): string {
+	return `archive_${btoa(filename + size).replace(/[/+=]/g, '')}_${Date.now()}`;
 }
+
 
 export const archiveStore = createArchiveStore();

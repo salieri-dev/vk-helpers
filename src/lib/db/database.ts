@@ -301,6 +301,71 @@ class DatabaseService {
 		return undefined;
 	}
 
+	/**
+		* Clear expired analytics cache entries
+		*/
+	async clearExpiredAnalytics(): Promise<number> {
+		const db = await this.ensureReady();
+		const now = new Date();
+		const tx = db.transaction('analytics', 'readwrite');
+		const store = tx.objectStore('analytics');
+		const index = store.index('by-valid-until');
+		
+		let cursor = await index.openCursor(IDBKeyRange.upperBound(now));
+		let deletedCount = 0;
+		
+		while (cursor) {
+			await cursor.delete();
+			deletedCount++;
+			cursor = await cursor.continue();
+		}
+		
+		await tx.done;
+		return deletedCount;
+	}
+
+	/**
+		* Get analytics cache statistics
+		*/
+	async getAnalyticsCacheStats(): Promise<{
+		totalEntries: number;
+		validEntries: number;
+		expiredEntries: number;
+		totalCacheSize: number;
+	}> {
+		const db = await this.ensureReady();
+		const allAnalytics = await db.getAll('analytics');
+		const now = new Date();
+		
+		let validEntries = 0;
+		let expiredEntries = 0;
+		let totalCacheSize = 0;
+		
+		for (const entry of allAnalytics) {
+			if (entry.validUntil > now) {
+				validEntries++;
+			} else {
+				expiredEntries++;
+			}
+			totalCacheSize += JSON.stringify(entry.data).length;
+		}
+		
+		return {
+			totalEntries: allAnalytics.length,
+			validEntries,
+			expiredEntries,
+			totalCacheSize
+		};
+	}
+
+	/**
+		* Clear all analytics cache
+		*/
+	async clearAnalyticsCache(): Promise<void> {
+		const db = await this.ensureReady();
+		await db.clear('analytics');
+	}
+
 	// DOWNLOAD QUEUE OPERATIONS
 	async createDownloadQueue(queue: DownloadQueueRecord): Promise<void> {
 		const db = await this.ensureReady();

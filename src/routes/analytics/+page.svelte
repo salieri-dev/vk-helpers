@@ -3,7 +3,10 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { archiveStore } from '$lib/stores/archive';
-	import { parseMessagesForChats, type ChatAnalytics, type ResponseTimeStats as ResponseTimeStatsType } from '$lib/utils/messageParser';
+	import { type ChatAnalytics, type ResponseTimeStats as ResponseTimeStatsType } from '$lib/utils/messageParser';
+	import { databaseService } from '$lib/db/database';
+	import { generateAnalyticsId } from '$lib/db/schema';
+	import { isAnalyticsCacheValid } from '$lib/utils/indexParsers';
 	import StatsCard from '$lib/components/StatsCard.svelte';
 	import TimelineChart from '$lib/components/TimelineChart.svelte';
 	import Chart from '$lib/components/Chart.svelte'; // Import your new wrapper
@@ -78,26 +81,63 @@
 
 		const archiveData = $archiveStore;
 		
-		if (!archiveData.zip) {
+		if (!archiveData.zip || !archiveData.file || !archiveData.archiveId) {
 			goto('/');
 			return;
 		}
 
 		try {
-			// Parse messages
-			analytics = await parseMessagesForChats(archiveData.zip, selectedChatIds, (step, processed, total) => {
-				processingStep = step;
-				processedCount = processed;
-				totalCount = total;
-			});
-			emojiStats = getEmojiStats(analytics.flatMap((chat) => chat.messages));
-			isLoading = false;
+			const analyticsId = generateAnalyticsId(
+				archiveData.archiveId,
+				selectedChatIds.length === 1 ? selectedChatIds[0] : null,
+				'chat'
+			);
+
+			// Step 1: Check cache first
+			const cachedAnalytics = await databaseService.getAnalytics(analyticsId);
+
+			if (cachedAnalytics && isAnalyticsCacheValid(cachedAnalytics.validUntil)) {
+				// Use cached data immediately
+				analytics = cachedAnalytics.data;
+				emojiStats = getEmojiStats(analytics.flatMap((chat) => chat.messages));
+				isLoading = false;
+				console.log('✅ Using cached analytics data');
+			} else {
+				// Step 2: No cache or expired cache, process in main thread but with progress
+				console.log('🔄 Processing analytics with caching');
+				
+				// Import the original parsing function
+				const { parseMessagesForChats } = await import('$lib/utils/messageParser');
+				
+				// Parse messages with progress callback
+				analytics = await parseMessagesForChats(archiveData.zip, selectedChatIds, (step, processed, total) => {
+					processingStep = step;
+					processedCount = processed;
+					totalCount = total;
+				});
+
+				// Step 3: Cache the results
+				await databaseService.saveAnalytics({
+					id: analyticsId,
+					archiveId: archiveData.archiveId,
+					chatId: selectedChatIds.length === 1 ? selectedChatIds[0] : undefined,
+					type: selectedChatIds.length === 1 ? 'chat' : 'global',
+					data: analytics,
+					computedAt: new Date(),
+					validUntil: new Date(Date.now() + 24 * 60 * 60 * 1000) // Cache for 24 hours
+				});
+
+				emojiStats = getEmojiStats(analytics.flatMap((chat) => chat.messages));
+				isLoading = false;
+				console.log('✅ Analytics completed and cached');
+			}
 		} catch (err) {
 			console.error('Error analyzing messages:', err);
 			error = err instanceof Error ? err.message : 'Failed to analyze messages';
 			isLoading = false;
 		}
 	});
+
 
 	function goBack() {
 		goto('/chats');
