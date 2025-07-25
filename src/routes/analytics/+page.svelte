@@ -22,6 +22,7 @@
 	import EmojiCloud from '$lib/components/EmojiCloud.svelte';
 	import TopEmojis from '$lib/components/TopEmojis.svelte';
 	import StatusView from '$lib/components/StatusView.svelte';
+	import FunMetrics from '$lib/components/FunMetrics.svelte';
 
 	let emojiStats: Map<string, number> = new Map();
 	let analytics: ChatAnalytics[] = [];
@@ -760,6 +761,14 @@
 				</div>
 			</div>
 		</section>
+
+		<!-- Fun & Gamified Metrics -->
+		<section class="fun-metrics-section">
+			<FunMetrics
+				messages={analytics.flatMap(chat => chat.messages)}
+				chats={analytics}
+			/>
+		</section>
 	{/if}
 </main>
 
@@ -1306,5 +1315,11 @@
 	.user-stats-info {
 		color: #6c757d;
 		font-size: 0.9rem;
+	}
+
+	.fun-metrics-section {
+		margin-top: 3rem;
+		border-top: 2px solid #e9ecef;
+		padding-top: 2rem;
 	}
 </style>
