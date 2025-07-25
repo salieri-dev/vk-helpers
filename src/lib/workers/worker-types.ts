@@ -113,6 +113,8 @@ declare global {
 	interface FileSystemDirectoryHandle {
 		getFileHandle(name: string, options?: { create?: boolean }): Promise<FileSystemFileHandle>;
 		getDirectoryHandle(name: string, options?: { create?: boolean }): Promise<FileSystemDirectoryHandle>;
+		requestPermission?(options?: { mode?: 'read' | 'readwrite' }): Promise<PermissionState>;
+		queryPermission?(options?: { mode?: 'read' | 'readwrite' }): Promise<PermissionState>;
 		entries(): AsyncIterableIterator<[string, FileSystemHandle]>;
 		keys(): AsyncIterableIterator<string>;
 		values(): AsyncIterableIterator<FileSystemHandle>;

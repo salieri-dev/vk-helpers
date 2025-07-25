@@ -107,11 +107,24 @@ export async function extractAlbumListFromIndex(zip: JSZip): Promise<AlbumInfo[]
 			if (!href) continue;
 			
 			const albumName = link.textContent?.trim() || 'Unnamed Album';
-			const albumId = href.replace('.html', '');
+			let albumId = href.replace('.html', '');
+			
+			// Clean up albumId - remove photo-albums/ prefix if present
+			if (albumId.startsWith('photo-albums/')) {
+				albumId = albumId.replace('photo-albums/', '');
+			}
+			
+			console.log(`🔍 IndexParser - href: ${href}, cleaned albumId: ${albumId}`);
 			
 			// Count photos by looking for the album file in ZIP
 			const albumFile = zip.file(`photos/${href}`);
 			let photoCount = 0;
+			
+			// Skip albums that don't have corresponding files
+			if (!albumFile) {
+				console.log(`⚠️ Skipping album "${albumName}" - no file found for ${href}`);
+				continue;
+			}
 			
 			if (albumFile) {
 				try {
@@ -119,9 +132,11 @@ export async function extractAlbumListFromIndex(zip: JSZip): Promise<AlbumInfo[]
 					const albumBuffer = await albumFile.async('arraybuffer');
 					const albumContent = decodeWindows1251(albumBuffer);
 					
-					// Count photo references in the HTML
-					const photoMatches = albumContent.match(/class="photo"/g);
+					// Count photo references in the HTML using same patterns as albumParser
+					let photoMatches = albumContent.match(/<div class="item">[\s\S]*?<a href="https:\/\/vk\.com\/photo.*?"><img src=".*?" alt=".*?"><\/a>/g);
 					photoCount = photoMatches ? photoMatches.length : 0;
+					
+					console.log(`📸 IndexParser - Album ${albumId}: found ${photoCount} photos`);
 				} catch (error) {
 					console.warn(`Failed to parse album ${href}:`, error);
 				}

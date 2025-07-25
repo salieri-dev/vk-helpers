@@ -28,7 +28,22 @@ export class FileSystemService {
 		}
 
 		try {
-			return await window.showDirectoryPicker!();
+			const dirHandle = await window.showDirectoryPicker!();
+			
+			// Request permission to write to the directory if the method exists
+			if (dirHandle && dirHandle.requestPermission) {
+				try {
+					const permission = await dirHandle.requestPermission({ mode: 'readwrite' });
+					if (permission !== 'granted') {
+						throw new Error('Write permission not granted for the selected directory');
+					}
+				} catch (permError) {
+					console.warn('Failed to request permissions:', permError);
+					// Continue anyway - some browsers might not support this method
+				}
+			}
+			
+			return dirHandle;
 		} catch (error) {
 			// User cancelled or permission denied
 			if (error instanceof DOMException && error.name === 'AbortError') {

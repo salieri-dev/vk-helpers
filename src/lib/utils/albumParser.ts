@@ -29,7 +29,22 @@ export async function parseAlbumsFromZip(
 		
 		let processedCount = 0;
 		for (const match of albumMatches) {
-			const [fullMatch, albumId, albumName, restOfContent] = match;
+			let [fullMatch, albumId, albumName, restOfContent] = match;
+			
+			// Debug: Log what we're extracting BEFORE cleanup
+			console.log(`🔍 Raw albumId from regex:`, albumId);
+			console.log(`🔍 Full match href:`, fullMatch.match(/href="([^"]+)"/)?.[1]);
+			
+			// Clean up albumId - remove any photo-albums/ prefix if it exists
+			const originalId = albumId;
+			if (albumId.startsWith('photo-albums/')) {
+				albumId = albumId.replace('photo-albums/', '');
+				console.log(`🔧 Cleaned albumId from "${originalId}" to "${albumId}"`);
+			}
+			
+			// Debug: Final values
+			console.log(`✅ Final albumId:`, albumId);
+			console.log(`✅ Album name:`, albumName?.trim());
 			
 			// Parse dates from the rest of content if they exist
 			const dateMatches = restOfContent.match(/<div class='item__tertiary'>(.*?)<\/div>[\s\S]*?<div class='item__tertiary'>(.*?)<\/div>/);
@@ -64,7 +79,11 @@ export async function parseAlbumsFromZip(
 		// Count photos in each album by parsing individual album files
 		for (let i = 0; i < albums.length; i++) {
 			const album = albums[i];
-			const albumFile = zip.file(`photos/${album.filename}`);
+			const filePath = `photos/${album.filename}`;
+			console.log(`🔍 Counting photos in album "${album.name}" (ID: ${album.id}), looking for file: ${filePath}`);
+			
+			const albumFile = zip.file(filePath);
+			console.log(`📁 Album file found for counting:`, !!albumFile);
 			
 			if (albumFile) {
 				try {
@@ -105,9 +124,36 @@ export async function parseAlbumPhotos(
 ): Promise<PhotoInfo[]> {
 	const photos: PhotoInfo[] = [];
 	
-	const albumFile = zip.file(`photos/photo-albums/${albumId}.html`);
+	// Debug: Show what album ID we received
+	console.log(`🔍 parseAlbumPhotos called with albumId:`, albumId);
+	
+	// Clean up the album ID - remove photo-albums/ prefix if present
+	let cleanAlbumId = albumId;
+	if (albumId.startsWith('photo-albums/')) {
+		cleanAlbumId = albumId.replace('photo-albums/', '');
+		console.log(`🔧 Cleaned albumId from "${albumId}" to "${cleanAlbumId}"`);
+	}
+	
+	// Try both possible paths for album files
+	let albumFile = zip.file(`photos/photo-albums/${cleanAlbumId}.html`);
+	let searchPath = `photos/photo-albums/${cleanAlbumId}.html`;
+	
+	// If not found, try the path without 'photos/' prefix
 	if (!albumFile) {
-		throw new Error(`Album ${albumId} not found in archive`);
+		albumFile = zip.file(`photo-albums/${cleanAlbumId}.html`);
+		searchPath = `photo-albums/${cleanAlbumId}.html`;
+	}
+	
+	console.log(`🔍 Looking for album file at: ${searchPath}`);
+	console.log(`📁 Album file found:`, !!albumFile);
+	
+	// Debug: List all files in the zip that match the pattern
+	const allFiles = Object.keys(zip.files);
+	const albumFiles = allFiles.filter(f => f.includes(`${cleanAlbumId}.html`));
+	console.log(`🔍 All files matching "${cleanAlbumId}.html":`, albumFiles);
+	
+	if (!albumFile) {
+		throw new Error(`Album ${albumId} not found in archive. Searched: ${searchPath}. Available files: ${albumFiles.join(', ')}`);
 	}
 	
 	try {
