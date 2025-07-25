@@ -11,9 +11,11 @@
 	import TimelineChart from '$lib/components/TimelineChart.svelte';
 	import Chart from '$lib/components/Chart.svelte'; // Import your new wrapper
 	import ActivityHeatmap from '$lib/components/ActivityHeatmap.svelte';
+	import DigitalGhostHeatmap from '$lib/components/DigitalGhostHeatmap.svelte';
 	import stopwords from 'stopwords-ru';
 	import WordCloud from '$lib/components/WordCloud.svelte';
 	import ConversationBalance from '$lib/components/ConversationBalance.svelte';
+	import LexicalDiversity from '$lib/components/LexicalDiversity.svelte';
 	import RelationshipTimeline from '$lib/components/RelationshipTimeline.svelte';
 	import ResponseTimeStats from '$lib/components/ResponseTimeStats.svelte';
 	import { getEmojiStats } from '$lib/utils/emojiParser';
@@ -564,7 +566,8 @@
 						
 						<div class="page-numbers">
 							{#each Array(Math.min(totalUserPages, 10)) as _, i}
-								{@const pageNum = Math.max(0, Math.min(userStatsPage - 5 + i, totalUserPages - 10 + i))}
+								{@const startPage = Math.max(0, Math.min(userStatsPage - 5, totalUserPages - 10))}
+								{@const pageNum = startPage + i}
 								{#if pageNum >= 0 && pageNum < totalUserPages}
 									<button
 										class="page-num"
@@ -612,6 +615,31 @@
 			</div>
 		</section>
 
+		<!-- Digital Ghost Heatmaps -->
+		<section class="ghost-analysis">
+			<h2>👻 Digital Ghost - Quiet Hours Analysis</h2>
+			<p class="section-description">
+				Discover your "ghost hours" - the times when you're least active online.
+				Darker areas represent quieter periods in your digital presence.
+			</p>
+			<div class="charts-grid">
+				<div class="chart-wrapper">
+					<DigitalGhostHeatmap
+						data={combinedHourActivity}
+						type="hourly"
+						title="👻 Digital Ghost - Hourly Quiet Hours"
+					/>
+				</div>
+				<div class="chart-wrapper">
+					<DigitalGhostHeatmap
+						data={combinedDayActivity}
+						type="daily"
+						title="👻 Digital Ghost - Daily Quiet Days"
+					/>
+				</div>
+			</div>
+		</section>
+
 		<!-- Timeline -->
 		<section class="timeline-section">
 			<h2>Message Timeline</h2>
@@ -622,10 +650,11 @@
 		<section class="advanced-analytics">
 			<h2>Advanced Analytics</h2>
 			
-			<!-- Conversation Balance for each chat -->
-			{#each analytics as chat}
-				<ConversationBalance {chat} />
-			{/each}
+			<!-- Conversation Balance -->
+			<ConversationBalance {analytics} currentUserId={null} />
+			
+			<!-- Lexical Diversity -->
+			<LexicalDiversity {analytics} currentUserId={null} />
 			<!-- Global Response Time Stats -->
 			{#if analytics.length > 0 && analytics[0].globalResponseTimeStats.totalResponses > 0}
 				<ResponseTimeStats stats={analytics[0].globalResponseTimeStats} userName={"Global"} />
@@ -770,17 +799,33 @@
 
 
 	.back-button {
-		background: none;
-		border: none;
-		color: #4a90e2;
-		font-size: 1rem;
+		background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+		border: 1px solid #dee2e6;
+		color: #495057;
+		font-size: 0.9rem;
 		cursor: pointer;
-		padding: 0.5rem;
+		padding: 0.75rem 1.25rem;
 		margin-bottom: 1rem;
+		border-radius: 8px;
+		transition: all 0.2s ease;
+		font-weight: 500;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 	}
 
 	.back-button:hover {
-		text-decoration: underline;
+		background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
+		border-color: #adb5bd;
+		transform: translateY(-1px);
+		box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+		text-decoration: none;
+	}
+
+	.back-button:active {
+		transform: translateY(0);
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 	}
 
 	h1 {
@@ -1080,6 +1125,22 @@
 		border: 1px solid #b3e5fc;
 	}
 
+	/* Ghost Analysis Section */
+	.ghost-analysis {
+		margin-bottom: 3rem;
+	}
+
+	.section-description {
+		color: #666;
+		font-size: 0.95rem;
+		margin-bottom: 2rem;
+		line-height: 1.5;
+		background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+		padding: 1rem;
+		border-radius: 8px;
+		border-left: 4px solid #666;
+	}
+
 	h2, h3 {
 			color: #333;
 			margin-bottom: 1rem;
@@ -1166,5 +1227,84 @@
 	}
 	.chart-wrapper:empty {
 		display: none;
+	}
+
+	/* Pagination Styles */
+	.pagination {
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		gap: 0.5rem;
+		margin-top: 2rem;
+		padding: 1rem 0;
+	}
+
+	.page-btn {
+		background: #f8f9fa;
+		border: 1px solid #dee2e6;
+		color: #495057;
+		padding: 0.5rem 1rem;
+		border-radius: 6px;
+		cursor: pointer;
+		font-size: 0.9rem;
+		transition: all 0.2s ease;
+	}
+
+	.page-btn:hover:not(:disabled) {
+		background: #e9ecef;
+		border-color: #adb5bd;
+	}
+
+	.page-btn:disabled {
+		background: #f8f9fa;
+		color: #6c757d;
+		cursor: not-allowed;
+		opacity: 0.6;
+	}
+
+	.page-numbers {
+		display: flex;
+		gap: 0.25rem;
+		margin: 0 1rem;
+	}
+
+	.page-num {
+		background: #fff;
+		border: 1px solid #dee2e6;
+		color: #495057;
+		padding: 0.5rem 0.75rem;
+		border-radius: 6px;
+		cursor: pointer;
+		font-size: 0.9rem;
+		min-width: 40px;
+		transition: all 0.2s ease;
+	}
+
+	.page-num:hover {
+		background: #e9ecef;
+		border-color: #adb5bd;
+	}
+
+	.page-num.active {
+		background: #4a90e2;
+		border-color: #4a90e2;
+		color: white;
+	}
+
+	.page-num.active:hover {
+		background: #357abd;
+		border-color: #357abd;
+	}
+
+	.user-stats-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 1.5rem;
+	}
+
+	.user-stats-info {
+		color: #6c757d;
+		font-size: 0.9rem;
 	}
 </style>

@@ -688,17 +688,33 @@
 	}
 
 	.back-button {
-		background: none;
-		border: none;
-		color: #4a90e2;
-		font-size: 1rem;
+		background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+		border: 1px solid #dee2e6;
+		color: #495057;
+		font-size: 0.9rem;
 		cursor: pointer;
-		padding: 0.5rem;
+		padding: 0.75rem 1.25rem;
 		margin-bottom: 1rem;
+		border-radius: 8px;
+		transition: all 0.2s ease;
+		font-weight: 500;
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 	}
 
 	.back-button:hover {
-		text-decoration: underline;
+		background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
+		border-color: #adb5bd;
+		transform: translateY(-1px);
+		box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+		text-decoration: none;
+	}
+
+	.back-button:active {
+		transform: translateY(0);
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 	}
 
 	h1 {

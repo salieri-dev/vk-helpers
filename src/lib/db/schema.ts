@@ -84,20 +84,6 @@ export interface AnalyticsRecord {
 	validUntil: Date;        // Cache expiry
 }
 
-export interface DownloadQueueRecord {
-	id: string;              // Primary key
-	archiveId: string;
-	photoIds: string[];
-	status: 'pending' | 'downloading' | 'complete' | 'failed';
-	totalImages: number;
-	downloadedImages: number;
-	failedImages: number;
-	createdAt: Date;
-	startedAt?: Date;
-	completedAt?: Date;
-	downloadPath?: string;   // File System Access API directory
-	zipPath?: string;        // Fallback ZIP file path
-}
 
 // IndexedDB schema definition
 export interface VKAnalyticsDB extends DBSchema {
@@ -165,15 +151,6 @@ export interface VKAnalyticsDB extends DBSchema {
 		};
 	};
 	
-	downloadQueue: {
-		key: string;
-		value: DownloadQueueRecord;
-		indexes: {
-			'by-archive': string;
-			'by-status': string;
-			'by-created': Date;
-		};
-	};
 }
 
 // Helper functions for generating keys
@@ -199,8 +176,4 @@ export function generatePhotoId(archiveId: string, photoId: string): string {
 
 export function generateAnalyticsId(archiveId: string, chatId: string | null, type: string): string {
 	return `${archiveId}_${chatId || 'global'}_${type}`;
-}
-
-export function generateDownloadQueueId(): string {
-	return `dl_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }

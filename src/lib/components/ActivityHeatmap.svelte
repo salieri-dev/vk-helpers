@@ -98,24 +98,27 @@
     // Add center circle with total
     const totalMessages = Object.values(data).reduce((sum, val) => sum + val, 0);
     hourGroup.append('circle')
-      .attr('r', innerRadius - 10)
+      .attr('r', innerRadius - 5)
       .attr('fill', '#f8f9fa')
       .attr('stroke', '#ddd')
       .attr('stroke-width', 2);
 
+    // Position "Total" text higher to prevent overlap
     hourGroup.append('text')
       .attr('text-anchor', 'middle')
+      .attr('y', -10)
       .attr('dominant-baseline', 'central')
       .style('font-size', '14px')
       .style('font-weight', 'bold')
       .style('fill', '#333')
       .text('Total');
 
+    // Position the number lower with better spacing
     hourGroup.append('text')
-      .attr('y', 20)
+      .attr('y', 15)
       .attr('text-anchor', 'middle')
       .attr('dominant-baseline', 'central')
-      .style('font-size', '18px')
+      .style('font-size', '16px')
       .style('font-weight', 'bold')
       .style('fill', '#4a90e2')
       .text(totalMessages.toLocaleString());
@@ -181,13 +184,17 @@
       .attr('stop-color', '#2c5aa0')
       .attr('stop-opacity', 1);
 
-    // Add X axis
+    // Add X axis with rotated labels to prevent overlap
     g.append('g')
       .attr('transform', `translate(0,${innerHeight})`)
       .call(d3.axisBottom(xScale))
       .selectAll('text')
-      .style('font-size', '12px')
-      .style('fill', '#666');
+      .style('font-size', '10px')
+      .style('fill', '#666')
+      .attr('transform', 'rotate(-45)')
+      .style('text-anchor', 'end')
+      .attr('dx', '-0.8em')
+      .attr('dy', '0.15em');
 
     // Add Y axis
     g.append('g')
@@ -249,8 +256,8 @@
 
 <D3Chart
   {data}
-  height={type === 'hourly' ? 400 : 300}
-  margin={{ top: 60, right: 40, bottom: 60, left: 80 }}
+  height={500}
+  margin={{ top: 60, right: 40, bottom: 120, left: 80 }}
   maxWidth={600}
   minWidth={400}
   responsive={true}

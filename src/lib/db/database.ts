@@ -1,13 +1,12 @@
 import { openDB, type IDBPDatabase } from 'idb';
-import type { 
-	VKAnalyticsDB, 
-	ArchiveRecord, 
-	ChatRecord, 
+import type {
+	VKAnalyticsDB,
+	ArchiveRecord,
+	ChatRecord,
 	MessageRecord,
 	AlbumRecord,
 	PhotoRecord,
-	AnalyticsRecord,
-	DownloadQueueRecord
+	AnalyticsRecord
 } from './schema';
 
 const DB_NAME = 'vk-analytics-db';
@@ -77,13 +76,6 @@ class DatabaseService {
 					analyticsStore.createIndex('by-valid-until', 'validUntil');
 				}
 
-				// Download queue store
-				if (!db.objectStoreNames.contains('downloadQueue')) {
-					const queueStore = db.createObjectStore('downloadQueue', { keyPath: 'id' });
-					queueStore.createIndex('by-archive', 'archiveId');
-					queueStore.createIndex('by-status', 'status');
-					queueStore.createIndex('by-created', 'createdAt');
-				}
 			},
 		});
 	}
@@ -130,7 +122,7 @@ class DatabaseService {
 
 	async deleteArchive(id: string): Promise<void> {
 		const db = await this.ensureReady();
-		const tx = db.transaction(['archives', 'chats', 'messages', 'albums', 'photos', 'analytics', 'downloadQueue'], 'readwrite');
+		const tx = db.transaction(['archives', 'chats', 'messages', 'albums', 'photos', 'analytics'], 'readwrite');
 		
 		// Delete archive and all related data
 		await Promise.all([
@@ -141,7 +133,6 @@ class DatabaseService {
 			this.deleteRecordsByIndex(tx.objectStore('albums'), 'by-archive', id),
 			this.deleteRecordsByIndex(tx.objectStore('photos'), 'by-archive', id),
 			this.deleteRecordsByIndex(tx.objectStore('analytics'), 'archiveId', id),
-			this.deleteRecordsByIndex(tx.objectStore('downloadQueue'), 'by-archive', id),
 		]);
 		
 		await tx.done;
@@ -366,24 +357,6 @@ class DatabaseService {
 		await db.clear('analytics');
 	}
 
-	// DOWNLOAD QUEUE OPERATIONS
-	async createDownloadQueue(queue: DownloadQueueRecord): Promise<void> {
-		const db = await this.ensureReady();
-		await db.add('downloadQueue', queue);
-	}
-
-	async updateDownloadQueue(queue: Partial<DownloadQueueRecord> & { id: string }): Promise<void> {
-		const db = await this.ensureReady();
-		const existing = await db.get('downloadQueue', queue.id);
-		if (existing) {
-			await db.put('downloadQueue', { ...existing, ...queue });
-		}
-	}
-
-	async getDownloadQueuesByArchive(archiveId: string): Promise<DownloadQueueRecord[]> {
-		const db = await this.ensureReady();
-		return await db.getAllFromIndex('downloadQueue', 'by-archive', archiveId);
-	}
 
 	// UTILITY METHODS
 	private async deleteRecordsByIndex(store: any, indexName: string, key: any): Promise<void> {
@@ -406,21 +379,19 @@ class DatabaseService {
 		albums: number;
 		photos: number;
 		analytics: number;
-		downloadQueues: number;
 	}> {
 		const db = await this.ensureReady();
 		
-		const [archives, chats, messages, albums, photos, analytics, downloadQueues] = await Promise.all([
+		const [archives, chats, messages, albums, photos, analytics] = await Promise.all([
 			db.count('archives'),
 			db.count('chats'),
 			db.count('messages'),
 			db.count('albums'),
 			db.count('photos'),
 			db.count('analytics'),
-			db.count('downloadQueue'),
 		]);
 
-		return { archives, chats, messages, albums, photos, analytics, downloadQueues };
+		return { archives, chats, messages, albums, photos, analytics };
 	}
 
 	/**
@@ -428,7 +399,7 @@ class DatabaseService {
 	 */
 	async clearAll(): Promise<void> {
 		const db = await this.ensureReady();
-		const tx = db.transaction(['archives', 'chats', 'messages', 'albums', 'photos', 'analytics', 'downloadQueue'], 'readwrite');
+		const tx = db.transaction(['archives', 'chats', 'messages', 'albums', 'photos', 'analytics'], 'readwrite');
 		
 		await Promise.all([
 			tx.objectStore('archives').clear(),
@@ -437,7 +408,6 @@ class DatabaseService {
 			tx.objectStore('albums').clear(),
 			tx.objectStore('photos').clear(),
 			tx.objectStore('analytics').clear(),
-			tx.objectStore('downloadQueue').clear(),
 		]);
 		
 		await tx.done;
