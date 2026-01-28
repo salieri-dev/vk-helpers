@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VK Archive Media Downloader</title>
+    <link rel="stylesheet" href="style.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="app" class="app">
+      <header class="hero">
+        <div>
+          <p class="badge">Client-side · No data leaves your browser</p>
+          <h1>VK Archive Media Downloader</h1>
+          <p class="subtitle">
+            Upload your VK archive ZIP, browse messages or albums, and download
+            photos plus voice messages in one click.
+          </p>
+        </div>
+        <div class="hero-card">
+          <label class="upload">
+            <input
+              type="file"
+              accept=".zip"
+              @change="handleZipUpload"
+              :disabled="loading"
+            />
+            <div>
+              <span class="upload-title">Upload Archive.zip</span>
+              <span class="upload-subtitle" v-if="zipName">{{ zipName }}</span>
+              <span class="upload-subtitle" v-else>
+                Supports VK HTML archive structure.
+              </span>
+            </div>
+          </label>
+          <div class="status" v-if="loading">Parsing archive…</div>
+          <div class="status error" v-if="errorMessage">{{ errorMessage }}</div>
+        </div>
+      </header>
+
+      <section class="content" v-if="ready">
+        <div class="tabs">
+          <button
+            class="tab"
+            :class="{ active: activeTab === 'messages' }"
+            @click="activeTab = 'messages'"
+          >
+            Messages
+          </button>
+          <button
+            class="tab"
+            :class="{ active: activeTab === 'albums' }"
+            @click="activeTab = 'albums'"
+          >
+            Albums
+          </button>
+        </div>
+
+        <div v-if="activeTab === 'messages'" class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Message chats</h2>
+              <p>Download images and .ogg voice messages from selected chats.</p>
+            </div>
+            <div class="panel-actions">
+              <button class="ghost" @click="toggleAll('messages')">
+                {{ allMessagesSelected ? 'Clear all' : 'Select all' }}
+              </button>
+              <button
+                class="primary"
+                :disabled="selectedMessages.length === 0 || downloading"
+                @click="downloadSelected('messages')"
+              >
+                Download selected
+              </button>
+            </div>
+          </div>
+          <div class="grid">
+            <label
+              v-for="chat in chats"
+              :key="chat.path"
+              class="card"
+            >
+              <input
+                type="checkbox"
+                :value="chat.path"
+                v-model="selectedMessages"
+              />
+              <div>
+                <h3>{{ chat.title }}</h3>
+                <p class="muted">{{ chat.path }}</p>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div v-if="activeTab === 'albums'" class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Photo albums</h2>
+              <p>Download photos from selected albums.</p>
+            </div>
+            <div class="panel-actions">
+              <button class="ghost" @click="toggleAll('albums')">
+                {{ allAlbumsSelected ? 'Clear all' : 'Select all' }}
+              </button>
+              <button
+                class="primary"
+                :disabled="selectedAlbums.length === 0 || downloading"
+                @click="downloadSelected('albums')"
+              >
+                Download selected
+              </button>
+            </div>
+          </div>
+          <div class="grid">
+            <label
+              v-for="album in albums"
+              :key="album.path"
+              class="card"
+            >
+              <input
+                type="checkbox"
+                :value="album.path"
+                v-model="selectedAlbums"
+              />
+              <div>
+                <h3>{{ album.title }}</h3>
+                <p class="muted">{{ album.path }}</p>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div class="panel" v-if="downloadLog.length">
+          <h2>Download log</h2>
+          <ul class="log">
+            <li v-for="entry in downloadLog" :key="entry.id">
+              <strong>{{ entry.label }}</strong>
+              <span>{{ entry.message }}</span>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <p>
+          Tip: VK media links may require VPN or CORS-friendly access depending
+          on your region.
+        </p>
+      </footer>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/vue@3.4.38/dist/vue.global.prod.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>

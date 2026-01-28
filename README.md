@@ -90,6 +90,24 @@ Enter the number corresponding to the mode:
 
 Follow through with the appropriate prompts based on your selected mode.
 
+## Web SPA: VK Archive Media Downloader
+
+This repository now includes a client-side single-page app that reads the VK HTML archive ZIP directly in the browser to download photo albums and message media (including .ogg voice messages).
+
+### Running the SPA locally
+
+1. Open the `web/` folder in a local static server (any HTTP server works).
+2. Visit `http://localhost:<port>/web/` in your browser.
+3. Upload `Archive.zip` from your VK data export and select chats/albums to download.
+
+Example using Python:
+
+```bash
+python -m http.server 4173
+```
+
+Then open `http://localhost:4173/web/`.
+
 ## Contributing
 
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
